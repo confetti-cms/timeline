@@ -11,7 +11,7 @@ import (
 
 func setup(t *testing.T) (*is.I, *Writer) {
 	is := is.New(t)
-	writer, err := NewClient()
+	writer, err := NewMemoryClient()
 	if err != nil {
 		t.Fatalf("failed to init client: %v", err)
 	}

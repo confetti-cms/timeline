@@ -554,7 +554,7 @@ func Test_get_promote_type_based_on_current_and_given_type(t *testing.T) {
 }
 
 func Test_promote_existing_column(t *testing.T) {
-	w, err := NewClient()
+	w, err := NewMemoryClient()
 	if err != nil {
 		t.Fatalf("failed to init client: %v", err)
 	}

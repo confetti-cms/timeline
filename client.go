@@ -9,7 +9,7 @@ import (
 	_ "github.com/marcboeker/go-duckdb"
 )
 
-func NewClient() (*Writer, error) {
+func NewMemoryClient() (*Writer, error) {
 	db, err := sql.Open("duckdb", ":memory:")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -17,7 +17,7 @@ func NewClient() (*Writer, error) {
 	return &Writer{DB: db}, nil
 }
 
-func NewClientWithPath(dbPath string) (*Writer, error) {
+func NewStorageClient(dbPath string) (*Writer, error) {
 	db, err := sql.Open("duckdb", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database %s: %w", dbPath, err)
