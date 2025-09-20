@@ -79,9 +79,13 @@ func (w *Writer) Write(table string, row Row) error {
 
 	row = w.preprocessRow(row, cols)
 
-	// fmt.Printf("Inserting into %s: %+v\n", table, row) print json endocded
 	rowJson, _ := json.Marshal(row)
-	fmt.Printf("Inserting into %s: %s\n", table, string(rowJson))
+	// get duckdb path
+	var dbPath string
+	if err := w.DB.QueryRow("PRAGMA database_list").Scan(&dbPath); err != nil {
+		return fmt.Errorf("failed to get database path: %w", err)
+	}
+	fmt.Printf("Inserting into %s.%s: %s\n", dbPath, table, string(rowJson))
 
 	if err := w.insertRow(table, row); err != nil {
 		return fmt.Errorf("failed to insert row: %w", err)
