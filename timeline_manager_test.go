@@ -14,7 +14,7 @@ func newTestManager() *TimelineConnectionManager {
 	}
 }
 
-func TestGetOrCreateConnection_GivenValidPath_WhenCreatingConnection_ThenReturnsValidWriter(t *testing.T) {
+func Test_get_or_create_connection_valid_path_returns_writer(t *testing.T) {
 	// Given
 	tempDir, err := os.MkdirTemp("", "timeline_test")
 	if err != nil {
@@ -37,7 +37,7 @@ func TestGetOrCreateConnection_GivenValidPath_WhenCreatingConnection_ThenReturns
 	}
 }
 
-func TestGetOrCreateConnection_GivenValidPath_WhenCreatingConnection_ThenStoresConnection(t *testing.T) {
+func Test_get_or_create_connection_valid_path_stores_connection(t *testing.T) {
 	// Given
 	tempDir, err := os.MkdirTemp("", "timeline_test")
 	if err != nil {
@@ -67,7 +67,7 @@ func TestGetOrCreateConnection_GivenValidPath_WhenCreatingConnection_ThenStoresC
 	}
 }
 
-func TestConnectionReuse_GivenSamePath_WhenCreatingMultipleConnections_ThenReturnsSameInstance(t *testing.T) {
+func Test_connection_reuse_same_path_returns_same_instance(t *testing.T) {
 	// Given
 	tempDir, err := os.MkdirTemp("", "timeline_test")
 	if err != nil {
@@ -96,7 +96,7 @@ func TestConnectionReuse_GivenSamePath_WhenCreatingMultipleConnections_ThenRetur
 	}
 }
 
-func TestConnectionReuse_GivenSamePath_WhenCreatingMultipleConnections_ThenStoresOnlyOneConnection(t *testing.T) {
+func Test_connection_reuse_same_path_stores_only_one_connection(t *testing.T) {
 	// Given
 	tempDir, err := os.MkdirTemp("", "timeline_test")
 	if err != nil {
@@ -128,7 +128,7 @@ func TestConnectionReuse_GivenSamePath_WhenCreatingMultipleConnections_ThenStore
 	}
 }
 
-func TestDirectoryCreation_GivenNestedPath_WhenCreatingConnection_ThenCreatesDirectories(t *testing.T) {
+func Test_directory_creation_nested_path_creates_directories(t *testing.T) {
 	// Given
 	tempDir, err := os.MkdirTemp("", "timeline_test")
 	if err != nil {
@@ -156,7 +156,7 @@ func TestDirectoryCreation_GivenNestedPath_WhenCreatingConnection_ThenCreatesDir
 	}
 }
 
-func TestDirectoryCreation_GivenNestedPath_WhenCreatingConnection_ThenCreatesDatabaseFile(t *testing.T) {
+func Test_directory_creation_nested_path_creates_database_file(t *testing.T) {
 	// Given
 	tempDir, err := os.MkdirTemp("", "timeline_test")
 	if err != nil {
@@ -179,7 +179,7 @@ func TestDirectoryCreation_GivenNestedPath_WhenCreatingConnection_ThenCreatesDat
 	}
 }
 
-func TestConcurrentAccess_GivenMultipleGoroutines_WhenCreatingConnections_ThenAllSucceed(t *testing.T) {
+func Test_concurrent_access_multiple_goroutines_all_succeed(t *testing.T) {
 	// Given
 	tempDir, err := os.MkdirTemp("", "timeline_test")
 	if err != nil {
@@ -219,7 +219,7 @@ func TestConcurrentAccess_GivenMultipleGoroutines_WhenCreatingConnections_ThenAl
 	}
 }
 
-func TestConcurrentAccess_GivenMultipleGoroutines_WhenCreatingConnections_ThenNoRaceConditions(t *testing.T) {
+func Test_concurrent_access_multiple_goroutines_no_race_conditions(t *testing.T) {
 	// Given
 	tempDir, err := os.MkdirTemp("", "timeline_test")
 	if err != nil {
@@ -260,7 +260,7 @@ func TestConcurrentAccess_GivenMultipleGoroutines_WhenCreatingConnections_ThenNo
 	}
 }
 
-func TestCloseAllConnections_GivenMultipleConnections_WhenClosingAll_ThenConnectionsExistInitially(t *testing.T) {
+func Test_close_all_connections_multiple_connections_exist_initially(t *testing.T) {
 	// Given
 	tempDir, err := os.MkdirTemp("", "timeline_test")
 	if err != nil {
@@ -293,7 +293,7 @@ func TestCloseAllConnections_GivenMultipleConnections_WhenClosingAll_ThenConnect
 	}
 }
 
-func TestCloseAllConnections_GivenMultipleConnections_WhenClosingAll_ThenAllConnectionsAreClosed(t *testing.T) {
+func Test_close_all_connections_multiple_connections_all_closed(t *testing.T) {
 	// Given
 	tempDir, err := os.MkdirTemp("", "timeline_test")
 	if err != nil {
@@ -329,7 +329,7 @@ func TestCloseAllConnections_GivenMultipleConnections_WhenClosingAll_ThenAllConn
 	}
 }
 
-func TestCloseConnection_GivenMultipleConnections_WhenClosingOne_ThenOnlyTargetIsClosed(t *testing.T) {
+func Test_close_connection_multiple_connections_only_target_closed(t *testing.T) {
 	// Given
 	tempDir, err := os.MkdirTemp("", "timeline_test")
 	if err != nil {
@@ -369,7 +369,7 @@ func TestCloseConnection_GivenMultipleConnections_WhenClosingOne_ThenOnlyTargetI
 	}
 }
 
-func TestCloseConnection_GivenMultipleConnections_WhenClosingOne_ThenOtherConnectionsRemain(t *testing.T) {
+func Test_close_connection_multiple_connections_others_remain(t *testing.T) {
 	// Given
 	tempDir, err := os.MkdirTemp("", "timeline_test")
 	if err != nil {
@@ -409,7 +409,7 @@ func TestCloseConnection_GivenMultipleConnections_WhenClosingOne_ThenOtherConnec
 	}
 }
 
-func TestErrorHandling_GivenEmptyPath_WhenCreatingConnection_ThenHandlesGracefully(t *testing.T) {
+func Test_error_handling_empty_path_handles_gracefully(t *testing.T) {
 	// Given
 	manager := newTestManager()
 
@@ -424,7 +424,7 @@ func TestErrorHandling_GivenEmptyPath_WhenCreatingConnection_ThenHandlesGraceful
 	}
 }
 
-func TestErrorHandling_GivenInvalidPath_WhenCreatingConnection_ThenHandlesGracefully(t *testing.T) {
+func Test_error_handling_invalid_path_handles_gracefully(t *testing.T) {
 	// Given
 	manager := newTestManager()
 	invalidPath := string([]byte{0x00, 0x01, 0x02})
@@ -440,7 +440,7 @@ func TestErrorHandling_GivenInvalidPath_WhenCreatingConnection_ThenHandlesGracef
 	}
 }
 
-func TestErrorHandling_GivenEdgeCases_WhenCreatingConnection_ThenDoesNotPanic(t *testing.T) {
+func Test_error_handling_edge_cases_does_not_panic(t *testing.T) {
 	// Given
 	manager := newTestManager()
 
