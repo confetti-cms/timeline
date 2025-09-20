@@ -9,6 +9,8 @@ import (
 	_ "github.com/marcboeker/go-duckdb"
 )
 
+type NullString sql.NullString
+
 func NewMemoryClient() (*Writer, error) {
 	db, err := sql.Open("duckdb", ":memory:")
 	if err != nil {
@@ -80,10 +82,16 @@ func (w *Writer) Write(table string, row Row) error {
 	row = w.preprocessRow(row, cols)
 
 	rowJson, _ := json.Marshal(row)
-	// get duckdb path
-	var dbPath string
-	if err := w.DB.QueryRow("PRAGMA database_list").Scan(&dbPath); err != nil {
+	// get duckdb path for logging
+	var seq int
+	var name string
+	var filePath sql.NullString
+	if err := w.DB.QueryRow("PRAGMA database_list").Scan(&seq, &name, &filePath); err != nil {
 		return fmt.Errorf("failed to get database path: %w", err)
+	}
+	dbPath := filePath.String
+	if !filePath.Valid {
+		dbPath = ":memory:"
 	}
 	fmt.Printf("Inserting into %s.%s: %s\n", dbPath, table, string(rowJson))
 
