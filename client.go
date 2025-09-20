@@ -1,9 +1,11 @@
 package timeline
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	_ "github.com/marcboeker/go-duckdb"
@@ -16,7 +18,19 @@ func NewMemoryClient() (*Writer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
-	return &Writer{DB: db}, nil
+
+	ctx, cancel := context.WithCancel(context.Background())
+	writer := &Writer{
+		DB:     db,
+		ctx:    ctx,
+		cancel: cancel,
+		ticker: time.NewTicker(200 * time.Millisecond),
+	}
+
+	// Start periodic checkpointing goroutine
+	go writer.periodicCheckpoint()
+
+	return writer, nil
 }
 
 func NewStorageClient(dbPath string) (*Writer, error) {
@@ -24,7 +38,19 @@ func NewStorageClient(dbPath string) (*Writer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database %s: %w", dbPath, err)
 	}
-	return &Writer{DB: db}, nil
+
+	ctx, cancel := context.WithCancel(context.Background())
+	writer := &Writer{
+		DB:     db,
+		ctx:    ctx,
+		cancel: cancel,
+		ticker: time.NewTicker(200 * time.Millisecond),
+	}
+
+	// Start periodic checkpointing goroutine
+	go writer.periodicCheckpoint()
+
+	return writer, nil
 }
 
 type Row map[string]any
@@ -39,10 +65,17 @@ func NewRow(timestamp time.Time, data map[string]any) Row {
 }
 
 type Writer struct {
-	DB *sql.DB
+	DB           *sql.DB
+	ctx          context.Context
+	cancel       context.CancelFunc
+	checkpointMu sync.Mutex
+	ticker       *time.Ticker
 }
 
 func (w *Writer) Close() error {
+	// Stop the periodic checkpointing goroutine
+	w.cancel()
+	w.ticker.Stop()
 	return w.DB.Close()
 }
 
@@ -82,7 +115,18 @@ func (w *Writer) Write(table string, row Row) error {
 	row = w.preprocessRow(row, cols)
 
 	rowJson, _ := json.Marshal(row)
-	fmt.Printf("Inserting into %s: %s\n", table, string(rowJson))
+	// get duckdb path for logging
+	var seq int
+	var name string
+	var filePath sql.NullString
+	if err := w.DB.QueryRow("PRAGMA database_list").Scan(&seq, &name, &filePath); err != nil {
+		return fmt.Errorf("failed to get database path: %w", err)
+	}
+	dbPath := filePath.String
+	if !filePath.Valid {
+		dbPath = ":memory:"
+	}
+	fmt.Printf("Inserting into %s.%s: %s\n", dbPath, table, string(rowJson))
 
 	if err := w.insertRow(table, row); err != nil {
 		return fmt.Errorf("failed to insert row: %w", err)
@@ -190,6 +234,38 @@ func (w *Writer) insertRow(table string, row Row) error {
 	insertSQL := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table, columns, valuePlaceholder)
 	if _, err := w.DB.Exec(insertSQL, values...); err != nil {
 		return fmt.Errorf("failed to execute: %w", err)
+	}
+	return nil
+}
+
+// periodicCheckpoint runs in a goroutine and performs checkpointing every 200ms
+func (w *Writer) periodicCheckpoint() {
+	for {
+		select {
+		case <-w.ctx.Done():
+			// Context cancelled, exit goroutine
+			return
+		case <-w.ticker.C:
+			// Attempt to checkpoint, but don't block if there are active transactions
+			w.checkpointMu.Lock()
+			// Use FORCE CHECKPOINT to avoid conflicts with active transactions
+			_, err := w.DB.Exec("FORCE CHECKPOINT")
+			if err != nil {
+				// Log the error but don't fail - checkpointing will be retried
+				fmt.Printf("Warning: failed to execute checkpoint: %v\n", err)
+			}
+			w.checkpointMu.Unlock()
+		}
+	}
+}
+
+// Checkpoint performs an immediate checkpoint (for backward compatibility)
+func (w *Writer) Checkpoint() error {
+	w.checkpointMu.Lock()
+	defer w.checkpointMu.Unlock()
+
+	if _, err := w.DB.Exec("FORCE CHECKPOINT"); err != nil {
+		return fmt.Errorf("failed to execute checkpoint: %w", err)
 	}
 	return nil
 }
