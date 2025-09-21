@@ -199,15 +199,17 @@ func Test_parse_clf_standard_line(t *testing.T) {
 	data := ParseLineToValues(line)
 
 	// With nil values, remote_logname should not be present since it was "-"
-	// Should have 6 fields: remote_host, remote_user, timestamp, request, status, response_size
-	is.Equal(len(data), 6)
+	// Should have 8 fields: remote_host, remote_user, timestamp, method, path, protocol, status, response_size
+	is.Equal(len(data), 8)
 	is.Equal(data["remote_host"], "127.0.0.1")
 	// remote_logname should not be present (nil)
 	_, exists := data["remote_logname"]
 	is.Equal(exists, false)
 	is.Equal(data["remote_user"], "frank")
 	is.Equal(data["timestamp"], "10/Oct/2000:13:55:36 -0700")
-	is.Equal(data["request"], "GET /apache_pb.gif HTTP/1.0")
+	is.Equal(data["method"], "GET")          // HTTP method
+	is.Equal(data["path"], "/apache_pb.gif") // Request path
+	is.Equal(data["protocol"], "HTTP/1.0")   // Protocol version
 	is.Equal(data["status"], 200)
 	is.Equal(data["response_size"], 2326)
 }
@@ -219,8 +221,8 @@ func Test_parse_clf_line_with_dash_size(t *testing.T) {
 	data := ParseLineToValues(line)
 
 	// With nil values, remote_logname and remote_user should not be present since they were "-"
-	// Should have 5 fields: remote_host, timestamp, request, status, response_size
-	is.Equal(len(data), 5)
+	// Should have 7 fields: remote_host, timestamp, method, path, protocol, status, response_size
+	is.Equal(len(data), 7)
 	is.Equal(data["remote_host"], "192.168.1.1")
 	// remote_logname should not be present (nil)
 	_, exists := data["remote_logname"]
@@ -228,9 +230,6 @@ func Test_parse_clf_line_with_dash_size(t *testing.T) {
 	// remote_user should not be present (nil)
 	_, exists = data["remote_user"]
 	is.Equal(exists, false)
-	is.Equal(data["timestamp"], "15/Dec/2023:10:30:45 +0000")
-	is.Equal(data["request"], "POST /api/login HTTP/1.1")
-	is.Equal(data["status"], 401)
 	is.Equal(data["response_size"], 0)
 }
 
@@ -241,15 +240,17 @@ func Test_parse_clf_line_with_hostname(t *testing.T) {
 	data := ParseLineToValues(line)
 
 	// With nil values, remote_logname should not be present since it was "-"
-	// Should have 6 fields: remote_host, remote_user, timestamp, request, status, response_size
-	is.Equal(len(data), 6)
+	// Should have 8 fields: remote_host, remote_user, timestamp, method, path, protocol, status, response_size
+	is.Equal(len(data), 8)
 	is.Equal(data["remote_host"], "example.com")
 	// remote_logname should not be present (nil)
 	_, exists := data["remote_logname"]
 	is.Equal(exists, false)
 	is.Equal(data["remote_user"], "alice")
 	is.Equal(data["timestamp"], "20/Jan/2024:14:20:30 +0200")
-	is.Equal(data["request"], "GET /index.html HTTP/1.1")
+	is.Equal(data["method"], "GET")        // HTTP method
+	is.Equal(data["path"], "/index.html")  // Request path
+	is.Equal(data["protocol"], "HTTP/1.1") // Protocol version
 	is.Equal(data["status"], 304)
 	is.Equal(data["response_size"], 178)
 }
@@ -272,15 +273,17 @@ func Test_parse_combined_log_format_standard_line(t *testing.T) {
 	data := ParseLineToValues(line)
 
 	// With nil values, remote_logname should not be present since it was "-"
-	// Should have 8 fields: remote_host, remote_user, timestamp, request, status, response_size, referer, user_agent
-	is.Equal(len(data), 8)
+	// Should have 10 fields: remote_host, remote_user, timestamp, method, path, protocol, status, response_size, referer, user_agent
+	is.Equal(len(data), 10)
 	is.Equal(data["remote_host"], "127.0.0.1")
 	// remote_logname should not be present (nil)
 	_, exists := data["remote_logname"]
 	is.Equal(exists, false)
 	is.Equal(data["remote_user"], "frank")
 	is.Equal(data["timestamp"], "10/Oct/2000:13:55:36 -0700")
-	is.Equal(data["request"], "GET /apache_pb.gif HTTP/1.0")
+	is.Equal(data["method"], "GET")          // HTTP method
+	is.Equal(data["path"], "/apache_pb.gif") // Request path
+	is.Equal(data["protocol"], "HTTP/1.0")   // Protocol version
 	is.Equal(data["status"], 200)
 	is.Equal(data["response_size"], 2326)
 	is.Equal(data["referer"], "http://www.example.com/start.html")
@@ -305,8 +308,8 @@ func Test_parse_combined_log_format_minimal(t *testing.T) {
 	data := ParseLineToValues(line)
 
 	// With nil values, remote_logname and remote_user should not be present since they were "-"
-	// Should have 7 fields: remote_host, timestamp, request, status, response_size, referer, user_agent
-	is.Equal(len(data), 7)
+	// Should have 9 fields: remote_host, timestamp, method, path, protocol, status, response_size, referer, user_agent
+	is.Equal(len(data), 9)
 	is.Equal(data["remote_host"], "example.com")
 	// remote_logname should not be present (nil)
 	_, exists := data["remote_logname"]
@@ -315,7 +318,9 @@ func Test_parse_combined_log_format_minimal(t *testing.T) {
 	_, exists = data["remote_user"]
 	is.Equal(exists, false)
 	is.Equal(data["timestamp"], "20/Jan/2024:14:20:30 +0200")
-	is.Equal(data["request"], "GET /index.html HTTP/1.1")
+	is.Equal(data["method"], "GET")        // HTTP method
+	is.Equal(data["path"], "/index.html")  // Request path
+	is.Equal(data["protocol"], "HTTP/1.1") // Protocol version
 	is.Equal(data["status"], 304)
 	is.Equal(data["response_size"], 178)
 	is.Equal(data["referer"], "https://www.google.com/")

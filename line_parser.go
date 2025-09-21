@@ -224,7 +224,19 @@ func parseCLF(l string) Row {
 		result["remote_user"] = matches[3]
 	}
 	result["timestamp"] = matches[4]
-	result["request"] = matches[5]
+
+	// Parse request into method, path, and protocol
+	request := matches[5]
+	requestParts := strings.Split(request, " ")
+	if len(requestParts) >= 3 {
+		result["method"] = requestParts[0]
+		result["path"] = requestParts[1]
+		result["protocol"] = requestParts[2]
+	} else {
+		// Fallback to storing full request if parsing fails
+		result["request"] = request
+	}
+
 	if status, err := strconv.Atoi(matches[6]); err == nil {
 		result["status"] = status
 	}
