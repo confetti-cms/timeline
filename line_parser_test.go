@@ -523,3 +523,159 @@ func Test_parse_unmatched_format_mixed_ansi(t *testing.T) {
 	is.Equal(len(data), 1)
 	is.Equal(data["message"], "Error: Something went wrong")
 }
+
+func Test_parse_monolog_standard_line(t *testing.T) {
+	is := is.New(t)
+	line := `[2025-09-21 22:35:12] local.DEBUG: User logged in {"id":1,"email":"john@example.com"}`
+
+	data := ParseLineToValues(line)
+
+	is.Equal(len(data), 6)
+	is.Equal(data["timestamp"], "2025-09-21 22:35:12")
+	is.Equal(data["channel"], "local")
+	is.Equal(data["level"], "DEBUG")
+	is.Equal(data["message"], "User logged in")
+	is.Equal(data["id"], float64(1)) // JSON numbers are parsed as float64
+	is.Equal(data["email"], "john@example.com")
+}
+
+func Test_parse_monolog_without_json(t *testing.T) {
+	is := is.New(t)
+	line := `[2025-09-21 22:35:12] production.ERROR: Database connection failed`
+
+	data := ParseLineToValues(line)
+
+	is.Equal(len(data), 4)
+	is.Equal(data["timestamp"], "2025-09-21 22:35:12")
+	is.Equal(data["channel"], "production")
+	is.Equal(data["level"], "ERROR")
+	is.Equal(data["message"], "Database connection failed")
+}
+
+func Test_parse_monolog_with_complex_json(t *testing.T) {
+	is := is.New(t)
+	line := `[2025-09-21 22:35:12] api.INFO: Request processed {"user_id":123,"response_time":0.45,"success":true,"items":["a","b","c"]}`
+
+	data := ParseLineToValues(line)
+
+	is.Equal(len(data), 8)
+	is.Equal(data["timestamp"], "2025-09-21 22:35:12")
+	is.Equal(data["channel"], "api")
+	is.Equal(data["level"], "INFO")
+	is.Equal(data["message"], "Request processed")
+	is.Equal(data["user_id"], float64(123)) // JSON numbers are parsed as float64
+	is.Equal(data["response_time"], 0.45)
+	is.Equal(data["success"], true)
+	if items, ok := data["items"].([]interface{}); ok {
+		is.Equal(len(items), 3)
+		is.Equal(items[0], "a")
+		is.Equal(items[1], "b")
+		is.Equal(items[2], "c")
+	} else {
+		t.Errorf("Expected items to be []interface{}, got %T", data["items"])
+	}
+}
+
+func Test_parse_monolog_with_numbers(t *testing.T) {
+	is := is.New(t)
+	line := `[2025-09-21 22:35:12] local.DEBUG: Processing batch {"count":42,"total":100.5,"big_number":9223372036854775807}`
+
+	data := ParseLineToValues(line)
+
+	is.Equal(len(data), 7)
+	is.Equal(data["timestamp"], "2025-09-21 22:35:12")
+	is.Equal(data["channel"], "local")
+	is.Equal(data["level"], "DEBUG")
+	is.Equal(data["message"], "Processing batch")
+	is.Equal(data["count"], float64(42)) // JSON numbers are parsed as float64
+	is.Equal(data["total"], 100.5)
+	is.Equal(data["big_number"], float64(9223372036854775807))
+}
+
+func Test_parse_monolog_with_simple_json(t *testing.T) {
+	is := is.New(t)
+	line := `[2025-09-21 22:35:12] local.DEBUG: User action {"user_id":1,"action":"login"}`
+
+	data := ParseLineToValues(line)
+
+	is.Equal(len(data), 6)
+	is.Equal(data["timestamp"], "2025-09-21 22:35:12")
+	is.Equal(data["channel"], "local")
+	is.Equal(data["level"], "DEBUG")
+	is.Equal(data["message"], "User action")
+	is.Equal(data["user_id"], float64(1)) // JSON numbers are parsed as float64
+	is.Equal(data["action"], "login")
+}
+
+func Test_parse_monolog_invalid_format(t *testing.T) {
+	is := is.New(t)
+
+	// Test cases that should not be parsed as Monolog
+	testCases := []struct {
+		line     string
+		expected Row
+	}{
+		{
+			line:     `[2025-09-21 22:35:12] local.DEBUG User logged in {"id":1}`, // Missing space before colon
+			expected: Row{"message": `[2025-09-21 22:35:12] local.DEBUG User logged in {"id":1}`},
+		},
+		{
+			line:     `2025-09-21 22:35:12 local.DEBUG: User logged in {"id":1}`, // Missing brackets
+			expected: Row{"message": `2025-09-21 22:35:12 local.DEBUG: User logged in {"id":1}`},
+		},
+		{
+			line:     `[2025-09-21 22:35:12] local: User logged in {"id":1}`, // Missing level
+			expected: Row{"message": `[2025-09-21 22:35:12] local: User logged in {"id":1}`},
+		},
+		{
+			line:     `[2025-09-21 22:35:12] local.DEBUG:`, // Missing message
+			expected: Row{"message": `[2025-09-21 22:35:12] local.DEBUG:`},
+		},
+		{
+			line:     `not a monolog line`, // Not Monolog format
+			expected: Row{"message": `not a monolog line`},
+		},
+		{
+			line:     ``, // Empty line
+			expected: Row{},
+		},
+	}
+
+	for _, tc := range testCases {
+		data := ParseLineToValues(tc.line)
+		// Debug: print actual data for failing cases
+		if len(data) != len(tc.expected) {
+			t.Logf("Line: %s", tc.line)
+			t.Logf("Expected: %+v", tc.expected)
+			t.Logf("Actual: %+v", data)
+		}
+		is.Equal(data, tc.expected)
+	}
+}
+
+func Test_parse_monolog_with_empty_json(t *testing.T) {
+	is := is.New(t)
+	line := `[2025-09-21 22:35:12] local.DEBUG: Test message {}`
+
+	data := ParseLineToValues(line)
+
+	is.Equal(len(data), 4)
+	is.Equal(data["timestamp"], "2025-09-21 22:35:12")
+	is.Equal(data["channel"], "local")
+	is.Equal(data["level"], "DEBUG")
+	is.Equal(data["message"], "Test message")
+}
+
+func Test_parse_monolog_with_special_characters(t *testing.T) {
+	is := is.New(t)
+	line := `[2025-09-21 22:35:12] app.WARNING: Special chars: äöü ñ 中文 {"unicode":"测试"}`
+
+	data := ParseLineToValues(line)
+
+	is.Equal(len(data), 5)
+	is.Equal(data["timestamp"], "2025-09-21 22:35:12")
+	is.Equal(data["channel"], "app")
+	is.Equal(data["level"], "WARNING")
+	is.Equal(data["message"], "Special chars: äöü ñ 中文")
+	is.Equal(data["unicode"], "测试")
+}

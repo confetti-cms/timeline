@@ -37,6 +37,10 @@ func ParseLineToValues(l string) Row {
 		return result
 	}
 
+	if result := parseMonolog(l); result != nil {
+		return result
+	}
+
 	return Row{"message": stripAnsiCodes(l)}
 }
 
@@ -500,4 +504,110 @@ func parseLogfmt(l string) Row {
 		return result
 	}
 	return nil
+}
+
+// parseMonolog parses Monolog-formatted log lines (Laravel/PHP logging format).
+// Monolog format: [timestamp] channel.level: message {json_data}
+// Examples:
+//
+//	[2025-09-21 22:35:12] local.DEBUG: User logged in {"id":1,"email":"john@example.com"}
+//	[2025-09-21 22:35:12] production.ERROR: Database connection failed
+//
+// Fields: timestamp, channel, level, message, and any JSON data fields
+func parseMonolog(l string) Row {
+	// Check if line starts with timestamp in brackets
+	if !strings.HasPrefix(l, "[") {
+		return nil
+	}
+
+	// Find the end of timestamp
+	endTime := strings.Index(l, "]")
+	if endTime == -1 {
+		return nil
+	}
+
+	timestamp := l[1:endTime]
+	rest := strings.TrimSpace(l[endTime+1:])
+
+	if rest == "" {
+		return nil
+	}
+
+	result := make(Row)
+	result["timestamp"] = timestamp
+
+	// Find the colon that separates channel.level from message
+	colonIndex := strings.Index(rest, ":")
+	if colonIndex == -1 {
+		return nil
+	}
+
+	// Parse channel.level
+	channelLevel := strings.TrimSpace(rest[:colonIndex])
+	if channelLevel == "" {
+		return nil
+	}
+
+	// Split channel and level - must have exactly one dot
+	parts := strings.Split(channelLevel, ".")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil
+	}
+
+	result["channel"] = parts[0]
+	result["level"] = parts[1]
+
+	// Parse message and JSON data
+	messageAndJSON := strings.TrimSpace(rest[colonIndex+1:])
+	if messageAndJSON == "" {
+		return nil
+	}
+
+	// Must have a space after the colon for valid Monolog format
+	if colonIndex+1 >= len(rest) || rest[colonIndex+1] != ' ' {
+		return nil
+	}
+
+	// Check if there's JSON data at the end
+	// Look for the last occurrence of { that could be the start of JSON data
+	braceIndex := strings.LastIndex(messageAndJSON, "{")
+	if braceIndex != -1 && strings.HasSuffix(messageAndJSON, "}") {
+		// Extract potential JSON part
+		jsonPart := messageAndJSON[braceIndex:]
+		messagePart := strings.TrimSpace(messageAndJSON[:braceIndex])
+
+		// Only try to parse as JSON if the message part doesn't end with a colon
+		// This helps avoid false positives where the message contains JSON-like content
+		if !strings.HasSuffix(messagePart, ":") {
+			// Parse JSON data
+			var jsonData map[string]interface{}
+			if err := json.Unmarshal([]byte(jsonPart), &jsonData); err == nil {
+				// Add JSON fields to result
+				for k, v := range jsonData {
+					if num, ok := v.(json.Number); ok {
+						if i, err := num.Int64(); err == nil {
+							result[k] = int(i)
+						} else if f, err := num.Float64(); err == nil {
+							result[k] = f
+						} else {
+							result[k] = num.String()
+						}
+					} else {
+						result[k] = v
+					}
+				}
+
+				result["message"] = messagePart
+				return result
+			} else {
+				// JSON parsing failed, log the error for debugging
+				// For now, just fall through to treat as message
+			}
+		}
+	}
+
+	// No JSON data, whole thing is message
+	result["message"] = messageAndJSON
+
+	return result
 }
