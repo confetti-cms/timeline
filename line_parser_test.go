@@ -1,6 +1,7 @@
 package timeline
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/matryer/is"
@@ -353,4 +354,67 @@ func Test_parse_logfmt_invalid_line(t *testing.T) {
 	// Should fall back to message since it's not valid logfmt
 	is.Equal(len(data), 1)
 	is.Equal(data["message"], line)
+}
+
+func Test_parse_extended_clf_line_with_forwarded_for(t *testing.T) {
+	is := is.New(t)
+	line := `10.10.2.2 - - [20/Sep/2025:23:41:41 +0000] "GET / HTTP/1.1" 200 39689 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36" "10.10.2.1"`
+
+	data := ParseLineToValues(line)
+
+	is.Equal(len(data), 10)
+	is.Equal(data["forwarded_for"], "10.10.2.1")
+}
+
+func Test_parse_extended_clf_line_with_dash_forwarded_for(t *testing.T) {
+	is := is.New(t)
+	line := `192.168.1.100 - alice [15/Dec/2023:10:30:45 +0000] "POST /api/login HTTP/1.1" 200 1234 "https://example.com/login" "curl/7.68.0" "-"`
+
+	data := ParseLineToValues(line)
+
+	is.Equal(len(data), 10)
+	is.Equal(data["forwarded_for"], "-")
+}
+
+func Test_parse_extended_clf_line_with_ipv6_forwarded_for(t *testing.T) {
+	is := is.New(t)
+	line := `2001:db8::1 - - [15/Dec/2023:10:30:45 +0000] "GET /api/data HTTP/1.1" 200 567 "https://example.com/" "Mozilla/5.0" "192.168.1.1"`
+
+	data := ParseLineToValues(line)
+
+	is.Equal(len(data), 10)
+	is.Equal(data["forwarded_for"], "192.168.1.1")
+}
+
+func Test_parse_extended_clf_line_without_forwarded_for(t *testing.T) {
+	is := is.New(t)
+	line := `127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326 "http://www.example.com/start.html" "Mozilla/4.08 [en] (Win98; I ;Nav)"`
+
+	data := ParseLineToValues(line)
+
+	// Should still work as combined log format (9 fields, no forwarded_for)
+	is.Equal(len(data), 9)
+}
+
+func Test_debug_regex_matching_without_forwarded_for(t *testing.T) {
+	// Debug test to see what the regex captures for line without forwarded_for
+	line := `127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326 "http://www.example.com/start.html" "Mozilla/4.08 [en] (Win98; I ;Nav)"`
+	re := regexp.MustCompile(`^(\S+) (\S+) (\S+) \[([^\]]+)\] "([^"]*)" (\d+) (\d+|-)(?: "([^"]*)" "([^"]*)"(?: "([^"]*)")?)?$`)
+	matches := re.FindStringSubmatch(line)
+
+	t.Logf("Number of matches: %d", len(matches))
+	for i, match := range matches {
+		t.Logf("Match %d: '%s'", i, match)
+	}
+}
+
+func Test_parse_extended_clf_line_with_empty_forwarded_for(t *testing.T) {
+	is := is.New(t)
+	line := `10.10.2.2 - - [20/Sep/2025:23:41:41 +0000] "GET / HTTP/1.1" 200 39689 "-" "Mozilla/5.0" ""`
+
+	data := ParseLineToValues(line)
+
+	// Should have 10 fields including empty forwarded_for
+	is.Equal(len(data), 10)
+	is.Equal(data["forwarded_for"], "")
 }

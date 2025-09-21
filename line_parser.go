@@ -194,15 +194,18 @@ func parseStructuredData(sd string) map[string]any {
 // Combined Log Format extends CLF with referer and user-agent fields.
 // CLF Format: %h %l %u [%t] "%r" %>s %b
 // Combined Format: %h %l %u [%t] "%r" %>s %b "%{Referer}i" "%{User-agent}i"
+// Extended Format: %h %l %u [%t] "%r" %>s %b "%{Referer}i" "%{User-agent}i" "%{X-Forwarded-For}i"
 // Examples:
 //
 //	CLF: 127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326
 //	Combined: 127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326 "http://www.example.com/" "Mozilla/5.0"
+//	Extended: 10.10.2.2 - - [20/Sep/2025:23:41:41 +0000] "GET / HTTP/1.1" 200 39689 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36" "10.10.2.1"
 //
-// Fields: remote_host, remote_logname, remote_user, timestamp, request, status, response_size, referer (Combined only), user_agent (Combined only)
+// Fields: remote_host, remote_logname, remote_user, timestamp, request, status, response_size, referer (Combined only), user_agent (Combined only), forwarded_for (Extended only)
 func parseCLF(l string) Row {
-	// CLF/Combined regex: ^(\S+) (\S+) (\S+) \[([^\]]+)\] "([^"]*)" (\d+) (\d+|-)(?: "([^"]*)" "([^"]*)")?$`
-	re := regexp.MustCompile(`^(\S+) (\S+) (\S+) \[([^\]]+)\] "([^"]*)" (\d+) (\d+|-)(?: "([^"]*)" "([^"]*)")?$`)
+	// CLF regex that matches only until response_size
+	// Remaining optional fields are handled with string splitting
+	re := regexp.MustCompile(`^(\S+) (\S+) (\S+) \[([^\]]+)\] "([^"]*)" (\d+) (\d+|-)`)
 	matches := re.FindStringSubmatch(l)
 	if matches == nil {
 		return nil
@@ -225,15 +228,88 @@ func parseCLF(l string) Row {
 		result["response_size"] = 0
 	}
 
+	// Handle remaining optional fields using string operations
+	// Find the end of the matched portion
+	matchedEnd := len(matches[0])
+	remaining := l[matchedEnd:]
+
+	// Parse optional quoted fields
+	quotedFields := parseQuotedFields(remaining)
+
 	// Check if Combined Log Format (has referer and user-agent)
-	if len(matches) > 8 && matches[8] != "" {
-		result["referer"] = matches[8]
+	if len(quotedFields) > 0 && quotedFields[0] != "" {
+		result["referer"] = quotedFields[0]
 	}
-	if len(matches) > 9 && matches[9] != "" {
-		result["user_agent"] = matches[9]
+	if len(quotedFields) > 1 && quotedFields[1] != "" {
+		result["user_agent"] = quotedFields[1]
+	}
+
+	// Check if Extended Log Format (has forwarded_for)
+	if len(quotedFields) > 2 {
+		result["forwarded_for"] = quotedFields[2]
 	}
 
 	return result
+}
+
+// parseQuotedFields parses quoted fields from the remaining part of a CLF line.
+// Returns a slice of field values, handling quoted strings properly.
+// Generated (and tested) by AI
+func parseQuotedFields(remaining string) []string {
+	var fields []string
+	remaining = strings.TrimSpace(remaining)
+
+	if remaining == "" {
+		return fields
+	}
+
+	// Split by spaces but be careful with quoted strings
+	parts := strings.Fields(remaining)
+	i := 0
+
+	for i < len(parts) {
+		part := parts[i]
+
+		// Check if this part starts with a quote
+		if strings.HasPrefix(part, "\"") {
+			var fieldValue strings.Builder
+			fieldValue.WriteString(part)
+
+			// Check if this quoted string spans multiple parts
+			if !strings.HasSuffix(part, "\"") {
+				// Multi-part quoted string
+				i++
+				for i < len(parts) {
+					nextPart := parts[i]
+					fieldValue.WriteString(" ")
+					fieldValue.WriteString(nextPart)
+
+					if strings.HasSuffix(nextPart, "\"") {
+						break
+					}
+					i++
+				}
+			}
+
+			// Extract the content between quotes
+			quotedStr := fieldValue.String()
+			if len(quotedStr) >= 2 && quotedStr[0] == '"' && quotedStr[len(quotedStr)-1] == '"' {
+				// Handle empty quoted strings
+				if len(quotedStr) == 2 {
+					fields = append(fields, "")
+				} else {
+					fields = append(fields, quotedStr[1:len(quotedStr)-1])
+				}
+			}
+		} else {
+			// Unquoted field
+			fields = append(fields, part)
+		}
+
+		i++
+	}
+
+	return fields
 }
 
 // parseLogfmt parses logfmt-formatted log lines.
