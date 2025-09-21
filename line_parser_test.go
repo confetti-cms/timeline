@@ -2,6 +2,8 @@ package timeline
 
 import (
 	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/matryer/is"
@@ -437,4 +439,76 @@ func Test_parse_extended_clf_line_with_empty_forwarded_for(t *testing.T) {
 	data := ParseLineToValues(line)
 
 	is.Equal(data["forwarded_for"], "")
+}
+
+func Test_debug_parse_clf_line_without_brackets(t *testing.T) {
+	line := `10.10.2.11 -  21/Sep/2025:19:41:57 +0000 "GET /init.php" 200`
+
+	// Debug: show what Fields() produces
+	parts := strings.Fields(line)
+	t.Logf("Number of parts after Fields(): %d", len(parts))
+	for i, part := range parts {
+		t.Logf("Part %d: '%s'", i, part)
+	}
+
+	// Debug status parsing
+	statusPart := parts[6] // Should be "200"
+	t.Logf("Status part: '%s'", statusPart)
+	if status, err := strconv.Atoi(statusPart); err == nil {
+		t.Logf("Status parsed successfully: %d", status)
+	} else {
+		t.Logf("Status parsing failed: %v", err)
+	}
+
+	data := ParseLineToValues(line)
+
+	t.Logf("Number of fields parsed: %d", len(data))
+	for key, value := range data {
+		t.Logf("Field %s: %v (%T)", key, value, value)
+	}
+}
+
+func Test_debug_parse_clf_line_without_brackets_fields(t *testing.T) {
+	line := `10.10.2.11 -  21/Sep/2025:19:41:57 +0000 "GET /init.php" 200`
+
+	data := ParseLineToValues(line)
+
+	t.Logf("Number of fields parsed: %d", len(data))
+	for key, value := range data {
+		t.Logf("Field %s: %v (%T)", key, value, value)
+	}
+}
+
+func Test_debug_parse_clf_standard_line_fields(t *testing.T) {
+	line := `127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326`
+
+	data := ParseLineToValues(line)
+
+	t.Logf("Number of fields parsed: %d", len(data))
+	for key, value := range data {
+		t.Logf("Field %s: %v (%T)", key, value, value)
+	}
+}
+
+func Test_parse_clf_line_without_brackets(t *testing.T) {
+	is := is.New(t)
+	line := `10.10.2.11 -  21/Sep/2025:19:41:57 +0000 "GET /init.php" 200`
+
+	data := ParseLineToValues(line)
+
+	// Should have 7 fields: remote_host, timestamp, method, path, protocol, status, response_size
+	is.Equal(len(data), 7)
+	is.Equal(data["remote_host"], "10.10.2.11")
+	// remote_logname should not be present (nil)
+	_, exists := data["remote_logname"]
+	is.Equal(exists, false)
+	// remote_user should not be present (nil)
+	_, exists = data["remote_user"]
+	is.Equal(exists, false)
+	is.Equal(data["timestamp"], "21/Sep/2025:19:41:57 +0000")
+	is.Equal(data["method"], "GET")        // HTTP method
+	is.Equal(data["path"], "/init.php")    // Request path
+	is.Equal(data["protocol"], "HTTP/1.0") // Protocol version (default when missing)
+	is.Equal(data["status"], 200)
+	is.Equal(data["response_size"], 0) // Default when missing (no response_size in this format)
 }

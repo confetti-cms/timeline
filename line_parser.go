@@ -3,7 +3,6 @@ package timeline
 import (
 	"bytes"
 	"encoding/json"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -195,98 +194,184 @@ func parseStructuredData(sd string) map[string]any {
 // CLF Format: %h %l %u [%t] "%r" %>s %b
 // Combined Format: %h %l %u [%t] "%r" %>s %b "%{Referer}i" "%{User-agent}i"
 // Extended Format: %h %l %u [%t] "%r" %>s %b "%{Referer}i" "%{User-agent}i" "%{X-Forwarded-For}i"
+// Also supports format without brackets around timestamp: %h %l %u %t "%r" %>s %b
 // Examples:
 //
 //	CLF: 127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326
 //	Combined: 127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326 "http://www.example.com/" "Mozilla/5.0"
 //	Extended: 10.10.2.2 - - [20/Sep/2025:23:41:41 +0000] "GET / HTTP/1.1" 200 39689 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36" "10.10.2.1"
+//	Without brackets: 10.10.2.11 -  21/Sep/2025:19:41:57 +0000 "GET /init.php" 200
 //
 // Fields: remote_host, remote_logname, remote_user, timestamp, request, status, response_size, referer (Combined only), user_agent (Combined only), forwarded_for (Extended only)
 func parseCLF(l string) Row {
-	// CLF regex that matches only until response_size
-	// Remaining optional fields are handled with string splitting
-	re := regexp.MustCompile(`^(\S+) (\S+) (\S+) \[([^\]]+)\] "([^"]*)" (\d+) (\d+|-)`)
-	matches := re.FindStringSubmatch(l)
-	if matches == nil {
+	// Split line by spaces to handle variable spacing
+	parts := strings.Fields(l)
+	if len(parts) < 6 {
 		return nil
 	}
 
 	result := make(Row)
 
+	// Find the request by looking for quoted string
+	requestIndex := -1
+	for i, part := range parts {
+		if strings.HasPrefix(part, "\"") {
+			requestIndex = i
+			break
+		}
+	}
+
+	if requestIndex == -1 || requestIndex < 3 {
+		return nil
+	}
+
+	// Parse first three fields: remote_host, remote_logname, remote_user
 	// Set fields only if they're not "-"
-	if matches[1] != "-" {
-		result["remote_host"] = matches[1]
+	if parts[0] != "-" {
+		result["remote_host"] = parts[0]
 	}
-	if matches[2] != "-" {
-		result["remote_logname"] = matches[2]
+	if len(parts) > 1 && parts[1] != "-" {
+		result["remote_logname"] = parts[1]
 	}
-	if matches[3] != "-" {
-		result["remote_user"] = matches[3]
+
+	// Check if we have a bracketed timestamp format by looking at parts[3]
+	// If parts[3] starts with '[', then it's a bracketed timestamp and parts[2] is remote_user
+	// If parts[3] doesn't start with '[', then it's a non-bracketed timestamp and parts[2] is part of timestamp
+	if len(parts) > 3 && strings.HasPrefix(parts[3], "[") {
+		// Bracketed format: parts[2] is remote_user
+		if len(parts) > 2 && parts[2] != "-" {
+			result["remote_user"] = parts[2]
+		}
+		// Timestamp starts from parts[3]
+		timestampStart := 3
+		if requestIndex > timestampStart {
+			timestampParts := parts[timestampStart:requestIndex]
+			timestamp := strings.Join(timestampParts, " ")
+
+			// Remove surrounding brackets if present
+			if len(timestamp) >= 2 && timestamp[0] == '[' && timestamp[len(timestamp)-1] == ']' {
+				timestamp = timestamp[1 : len(timestamp)-1]
+			}
+
+			result["timestamp"] = timestamp
+		}
+	} else {
+		// Non-bracketed format: parts[2] is part of timestamp, no remote_user
+		// Timestamp starts from parts[2]
+		timestampStart := 2
+		if requestIndex > timestampStart {
+			timestampParts := parts[timestampStart:requestIndex]
+			timestamp := strings.Join(timestampParts, " ")
+			result["timestamp"] = timestamp
+		}
 	}
-	result["timestamp"] = matches[4]
+
+	// Parse request (combine quoted parts if needed)
+	request := parts[requestIndex]
+	if !strings.HasSuffix(request, "\"") {
+		// Multi-part quoted request - find the closing quote
+		for i := requestIndex + 1; i < len(parts); i++ {
+			request += " " + parts[i]
+			if strings.HasSuffix(parts[i], "\"") {
+				break
+			}
+		}
+	}
+
+	// Calculate the actual end of the request (for status parsing)
+	actualRequestEndIndex := requestIndex
+	if !strings.HasSuffix(parts[requestIndex], "\"") {
+		// Multi-part request - find where it ends
+		for i := requestIndex + 1; i < len(parts); i++ {
+			actualRequestEndIndex = i
+			if strings.HasSuffix(parts[i], "\"") {
+				break
+			}
+		}
+	}
+
+	// Remove surrounding quotes from request
+	if len(request) >= 2 && request[0] == '"' && request[len(request)-1] == '"' {
+		request = request[1 : len(request)-1]
+	}
 
 	// Parse request into method, path, and protocol
-	request := matches[5]
 	requestParts := strings.Split(request, " ")
 	if len(requestParts) >= 3 {
 		result["method"] = requestParts[0]
 		result["path"] = requestParts[1]
 		result["protocol"] = requestParts[2]
+	} else if len(requestParts) >= 2 {
+		// Handle requests without protocol (e.g., "GET /init.php")
+		result["method"] = requestParts[0]
+		result["path"] = requestParts[1]
+		result["protocol"] = "HTTP/1.0" // Default protocol when missing
 	} else {
 		// Fallback to storing full request if parsing fails
 		result["request"] = request
 	}
 
-	if status, err := strconv.Atoi(matches[6]); err == nil {
-		result["status"] = status
+	// Parse status (should be right after request)
+	statusIndex := actualRequestEndIndex + 1
+	if statusIndex < len(parts) {
+		if status, err := strconv.Atoi(parts[statusIndex]); err == nil {
+			result["status"] = status
+		}
 	}
-	if matches[7] != "-" {
-		if size, err := strconv.Atoi(matches[7]); err == nil {
+
+	// Parse response size (should be right after status)
+	// Only parse if we have more parts and the next part looks like a number
+	sizeIndex := actualRequestEndIndex + 2
+	if sizeIndex < len(parts) && parts[sizeIndex] != "-" {
+		if size, err := strconv.Atoi(parts[sizeIndex]); err == nil {
 			result["response_size"] = size
 		}
 	} else {
-		result["response_size"] = 0
+		// If we don't have a response size field, check if this is a valid CLF line
+		// For bracketed format, response size is required
+		// For non-bracketed format, response size is optional and defaults to 0
+		if sizeIndex >= len(parts) {
+			// Check if this is a non-bracketed format (timestamp doesn't start with '[')
+			if len(parts) > 3 && !strings.HasPrefix(parts[3], "[") {
+				// Non-bracketed format - response size is optional
+				result["response_size"] = 0
+			} else {
+				// Bracketed format - response size is required, this is not a valid CLF line
+				return nil
+			}
+		} else {
+			result["response_size"] = 0
+		}
 	}
 
-	// Handle remaining optional fields using string operations
-	// Find the end of the matched portion
-	matchedEnd := len(matches[0])
-	remaining := l[matchedEnd:]
+	// Handle remaining optional fields (referer, user_agent, forwarded_for)
+	remainingStart := actualRequestEndIndex + 3
+	if remainingStart < len(parts) {
+		quotedFields := parseQuotedFieldsFromSlice(parts[remainingStart:])
 
-	// Parse optional quoted fields
-	quotedFields := parseQuotedFields(remaining)
+		// Check if Combined Log Format (has referer and user-agent)
+		if len(quotedFields) > 0 && quotedFields[0] != "-" && quotedFields[0] != "" {
+			result["referer"] = quotedFields[0]
+		}
+		if len(quotedFields) > 1 && quotedFields[1] != "-" && quotedFields[1] != "" {
+			result["user_agent"] = quotedFields[1]
+		}
 
-	// Check if Combined Log Format (has referer and user-agent)
-	if len(quotedFields) > 0 && quotedFields[0] != "-" && quotedFields[0] != "" {
-		result["referer"] = quotedFields[0]
-	}
-	if len(quotedFields) > 1 && quotedFields[1] != "-" && quotedFields[1] != "" {
-		result["user_agent"] = quotedFields[1]
-	}
-
-	// Check if Extended Log Format (has forwarded_for)
-	if len(quotedFields) > 2 && quotedFields[2] != "-" {
-		result["forwarded_for"] = quotedFields[2]
+		// Check if Extended Log Format (has forwarded_for)
+		if len(quotedFields) > 2 && quotedFields[2] != "-" {
+			result["forwarded_for"] = quotedFields[2]
+		}
 	}
 
 	return result
 }
 
-// parseQuotedFields parses quoted fields from the remaining part of a CLF line.
+// parseQuotedFieldsFromSlice parses quoted fields from a slice of strings.
 // Returns a slice of field values, handling quoted strings properly.
-// Generated (and tested) by AI
-func parseQuotedFields(remaining string) []string {
+func parseQuotedFieldsFromSlice(parts []string) []string {
 	var fields []string
-	remaining = strings.TrimSpace(remaining)
 
-	if remaining == "" {
-		return fields
-	}
-
-	// Split by spaces but be careful with quoted strings
-	parts := strings.Fields(remaining)
 	i := 0
-
 	for i < len(parts) {
 		part := parts[i]
 
