@@ -1,9 +1,6 @@
 package timeline
 
 import (
-	"regexp"
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/matryer/is"
@@ -381,112 +378,51 @@ func Test_parse_logfmt_invalid_line(t *testing.T) {
 	is.Equal(data["message"], line)
 }
 
-func Test_parse_extended_clf_line_with_forwarded_for(t *testing.T) {
-	is := is.New(t)
-	line := `10.10.2.2 - - [20/Sep/2025:23:41:41 +0000] "GET / HTTP/1.1" 200 39689 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36" "10.10.2.1"`
-
-	data := ParseLineToValues(line)
-
-	is.Equal(data["forwarded_for"], "10.10.2.1")
-}
-
-func Test_parse_extended_clf_line_with_dash_forwarded_for(t *testing.T) {
-	is := is.New(t)
-	line := `192.168.1.100 - alice [15/Dec/2023:10:30:45 +0000] "POST /api/login HTTP/1.1" 200 1234 "https://example.com/login" "curl/7.68.0" "-"`
-
-	data := ParseLineToValues(line)
-
-	_, exists := data["forwarded_for"]
-	is.Equal(exists, false)
-}
-
-func Test_parse_extended_clf_line_with_ipv6_forwarded_for(t *testing.T) {
-	is := is.New(t)
-	line := `2001:db8::1 - - [15/Dec/2023:10:30:45 +0000] "GET /api/data HTTP/1.1" 200 567 "https://example.com/" "Mozilla/5.0" "192.168.1.1"`
-
-	data := ParseLineToValues(line)
-
-	is.Equal(data["forwarded_for"], "192.168.1.1")
-}
-
-func Test_parse_extended_clf_line_without_forwarded_for(t *testing.T) {
-	is := is.New(t)
-	line := `127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326 "http://www.example.com/start.html" "Mozilla/4.08 [en] (Win98; I ;Nav)"`
-
-	data := ParseLineToValues(line)
-
-	// remote_logname should not be present (nil)
-	_, exists := data["remote_logname"]
-	is.Equal(exists, false)
-}
-
-func Test_debug_regex_matching_without_forwarded_for(t *testing.T) {
-	// Debug test to see what the regex captures for line without forwarded_for
-	line := `127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326 "http://www.example.com/start.html" "Mozilla/4.08 [en] (Win98; I ;Nav)"`
-	re := regexp.MustCompile(`^(\S+) (\S+) (\S+) \[([^\]]+)\] "([^"]*)" (\d+) (\d+|-)(?: "([^"]*)" "([^"]*)"(?: "([^"]*)")?)?$`)
-	matches := re.FindStringSubmatch(line)
-
-	t.Logf("Number of matches: %d", len(matches))
-	for i, match := range matches {
-		t.Logf("Match %d: '%s'", i, match)
-	}
-}
-
-func Test_parse_extended_clf_line_with_empty_forwarded_for(t *testing.T) {
-	is := is.New(t)
-	line := `10.10.2.2 - - [20/Sep/2025:23:41:41 +0000] "GET / HTTP/1.1" 200 39689 "-" "Mozilla/5.0" ""`
-
-	data := ParseLineToValues(line)
-
-	is.Equal(data["forwarded_for"], "")
-}
-
-func Test_debug_parse_clf_line_without_brackets(t *testing.T) {
-	line := `10.10.2.11 -  21/Sep/2025:19:41:57 +0000 "GET /init.php" 200`
-
-	// Debug: show what Fields() produces
-	parts := strings.Fields(line)
-	t.Logf("Number of parts after Fields(): %d", len(parts))
-	for i, part := range parts {
-		t.Logf("Part %d: '%s'", i, part)
+func Test_parse_extended_clf_forwarded_for(t *testing.T) {
+	tests := []struct {
+		name        string
+		line        string
+		expected    any
+		shouldExist bool
+	}{
+		{
+			name:        "with forwarded_for IP",
+			line:        `10.10.2.2 - - [20/Sep/2025:23:41:41 +0000] "GET / HTTP/1.1" 200 39689 "-" "Mozilla/5.0" "10.10.2.1"`,
+			expected:    "10.10.2.1",
+			shouldExist: true,
+		},
+		{
+			name:        "with dash forwarded_for",
+			line:        `192.168.1.100 - alice [15/Dec/2023:10:30:45 +0000] "POST /api/login HTTP/1.1" 200 1234 "https://example.com/login" "curl/7.68.0" "-"`,
+			expected:    nil,
+			shouldExist: false,
+		},
+		{
+			name:        "with IPv6 forwarded_for",
+			line:        `2001:db8::1 - - [15/Dec/2023:10:30:45 +0000] "GET /api/data HTTP/1.1" 200 567 "https://example.com/" "Mozilla/5.0" "192.168.1.1"`,
+			expected:    "192.168.1.1",
+			shouldExist: true,
+		},
+		{
+			name:        "with empty forwarded_for",
+			line:        `10.10.2.2 - - [20/Sep/2025:23:41:41 +0000] "GET / HTTP/1.1" 200 39689 "-" "Mozilla/5.0" ""`,
+			expected:    "",
+			shouldExist: true,
+		},
 	}
 
-	// Debug status parsing
-	statusPart := parts[6] // Should be "200"
-	t.Logf("Status part: '%s'", statusPart)
-	if status, err := strconv.Atoi(statusPart); err == nil {
-		t.Logf("Status parsed successfully: %d", status)
-	} else {
-		t.Logf("Status parsing failed: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			is := is.New(t)
+			data := ParseLineToValues(tt.line)
 
-	data := ParseLineToValues(line)
-
-	t.Logf("Number of fields parsed: %d", len(data))
-	for key, value := range data {
-		t.Logf("Field %s: %v (%T)", key, value, value)
-	}
-}
-
-func Test_debug_parse_clf_line_without_brackets_fields(t *testing.T) {
-	line := `10.10.2.11 -  21/Sep/2025:19:41:57 +0000 "GET /init.php" 200`
-
-	data := ParseLineToValues(line)
-
-	t.Logf("Number of fields parsed: %d", len(data))
-	for key, value := range data {
-		t.Logf("Field %s: %v (%T)", key, value, value)
-	}
-}
-
-func Test_debug_parse_clf_standard_line_fields(t *testing.T) {
-	line := `127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326`
-
-	data := ParseLineToValues(line)
-
-	t.Logf("Number of fields parsed: %d", len(data))
-	for key, value := range data {
-		t.Logf("Field %s: %v (%T)", key, value, value)
+			if tt.shouldExist {
+				is.Equal(data["forwarded_for"], tt.expected)
+			} else {
+				_, exists := data["forwarded_for"]
+				is.Equal(exists, false)
+			}
+		})
 	}
 }
 
