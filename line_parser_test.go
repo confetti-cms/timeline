@@ -448,3 +448,78 @@ func Test_parse_clf_line_without_brackets(t *testing.T) {
 	is.Equal(data["status"], 200)
 	is.Equal(data["response_size"], 0) // Default when missing (no response_size in this format)
 }
+
+func Test_stripAnsiCodes_basic_colors(t *testing.T) {
+	is := is.New(t)
+
+	testCases := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "green text",
+			input:    "Done in \x1b[32m32ms\x1b[39m",
+			expected: "Done in 32ms",
+		},
+		{
+			name:     "red text",
+			input:    "Error: \x1b[31mfailed\x1b[39m",
+			expected: "Error: failed",
+		},
+		{
+			name:     "bold text",
+			input:    "\x1b[1mbold text\x1b[22m",
+			expected: "bold text",
+		},
+		{
+			name:     "multiple codes",
+			input:    "\x1b[1m\x1b[32mSuccess\x1b[39m\x1b[22m",
+			expected: "Success",
+		},
+		{
+			name:     "no ansi codes",
+			input:    "plain text",
+			expected: "plain text",
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "complex ansi sequence",
+			input:    "\x1b[38;5;196m\x1b[48;5;15mColored text\x1b[0m",
+			expected: "Colored text",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := stripAnsiCodes(tc.input)
+			is.Equal(result, tc.expected)
+		})
+	}
+}
+
+func Test_parse_unmatched_format_with_ansi_codes(t *testing.T) {
+	is := is.New(t)
+
+	// Test that ANSI codes are stripped when no format matches
+	line := "Done in \x1b[32m32ms\x1b[39m"
+	data := ParseLineToValues(line)
+
+	is.Equal(len(data), 1)
+	is.Equal(data["message"], "Done in 32ms")
+}
+
+func Test_parse_unmatched_format_mixed_ansi(t *testing.T) {
+	is := is.New(t)
+
+	// Test with multiple ANSI codes
+	line := "\x1b[1m\x1b[31mError:\x1b[39m\x1b[22m Something went wrong"
+	data := ParseLineToValues(line)
+
+	is.Equal(len(data), 1)
+	is.Equal(data["message"], "Error: Something went wrong")
+}

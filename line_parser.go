@@ -3,9 +3,18 @@ package timeline
 import (
 	"bytes"
 	"encoding/json"
+	"regexp"
 	"strconv"
 	"strings"
 )
+
+// stripAnsiCodes removes ANSI color codes from a string.
+// ANSI color codes follow the pattern: \x1b[XXm where XX is a color/style code.
+func stripAnsiCodes(s string) string {
+	// Match ANSI escape sequences: \x1b[ followed by any number of parameters separated by ; and ending with m
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	return ansiRegex.ReplaceAllString(s, "")
+}
 
 func ParseLineToValues(l string) Row {
 	if l == "" {
@@ -28,7 +37,7 @@ func ParseLineToValues(l string) Row {
 		return result
 	}
 
-	return Row{"message": l}
+	return Row{"message": stripAnsiCodes(l)}
 }
 
 // parseJSON parses a JSON-formatted log line.
