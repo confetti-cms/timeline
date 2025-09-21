@@ -197,9 +197,13 @@ func Test_parse_clf_standard_line(t *testing.T) {
 
 	data := ParseLineToValues(line)
 
-	is.Equal(len(data), 7)
+	// With nil values, remote_logname should not be present since it was "-"
+	// Should have 6 fields: remote_host, remote_user, timestamp, request, status, response_size
+	is.Equal(len(data), 6)
 	is.Equal(data["remote_host"], "127.0.0.1")
-	is.Equal(data["remote_logname"], "-")
+	// remote_logname should not be present (nil)
+	_, exists := data["remote_logname"]
+	is.Equal(exists, false)
 	is.Equal(data["remote_user"], "frank")
 	is.Equal(data["timestamp"], "10/Oct/2000:13:55:36 -0700")
 	is.Equal(data["request"], "GET /apache_pb.gif HTTP/1.0")
@@ -213,10 +217,16 @@ func Test_parse_clf_line_with_dash_size(t *testing.T) {
 
 	data := ParseLineToValues(line)
 
-	is.Equal(len(data), 7)
+	// With nil values, remote_logname and remote_user should not be present since they were "-"
+	// Should have 5 fields: remote_host, timestamp, request, status, response_size
+	is.Equal(len(data), 5)
 	is.Equal(data["remote_host"], "192.168.1.1")
-	is.Equal(data["remote_logname"], "-")
-	is.Equal(data["remote_user"], "-")
+	// remote_logname should not be present (nil)
+	_, exists := data["remote_logname"]
+	is.Equal(exists, false)
+	// remote_user should not be present (nil)
+	_, exists = data["remote_user"]
+	is.Equal(exists, false)
 	is.Equal(data["timestamp"], "15/Dec/2023:10:30:45 +0000")
 	is.Equal(data["request"], "POST /api/login HTTP/1.1")
 	is.Equal(data["status"], 401)
@@ -229,9 +239,13 @@ func Test_parse_clf_line_with_hostname(t *testing.T) {
 
 	data := ParseLineToValues(line)
 
-	is.Equal(len(data), 7)
+	// With nil values, remote_logname should not be present since it was "-"
+	// Should have 6 fields: remote_host, remote_user, timestamp, request, status, response_size
+	is.Equal(len(data), 6)
 	is.Equal(data["remote_host"], "example.com")
-	is.Equal(data["remote_logname"], "-")
+	// remote_logname should not be present (nil)
+	_, exists := data["remote_logname"]
+	is.Equal(exists, false)
 	is.Equal(data["remote_user"], "alice")
 	is.Equal(data["timestamp"], "20/Jan/2024:14:20:30 +0200")
 	is.Equal(data["request"], "GET /index.html HTTP/1.1")
@@ -256,9 +270,13 @@ func Test_parse_combined_log_format_standard_line(t *testing.T) {
 
 	data := ParseLineToValues(line)
 
-	is.Equal(len(data), 9)
+	// With nil values, remote_logname should not be present since it was "-"
+	// Should have 8 fields: remote_host, remote_user, timestamp, request, status, response_size, referer, user_agent
+	is.Equal(len(data), 8)
 	is.Equal(data["remote_host"], "127.0.0.1")
-	is.Equal(data["remote_logname"], "-")
+	// remote_logname should not be present (nil)
+	_, exists := data["remote_logname"]
+	is.Equal(exists, false)
 	is.Equal(data["remote_user"], "frank")
 	is.Equal(data["timestamp"], "10/Oct/2000:13:55:36 -0700")
 	is.Equal(data["request"], "GET /apache_pb.gif HTTP/1.0")
@@ -274,15 +292,22 @@ func Test_parse_combined_log_format_with_dash_referer(t *testing.T) {
 
 	data := ParseLineToValues(line)
 
-	is.Equal(len(data), 9)
+	// With nil values, remote_logname should not be present since it was "-"
+	// Should have 7 fields: remote_host, remote_user, timestamp, request, status, response_size, user_agent
+	// (referer was "-" so it's excluded)
+	is.Equal(len(data), 7)
 	is.Equal(data["remote_host"], "192.168.1.100")
-	is.Equal(data["remote_logname"], "-")
+	// remote_logname should not be present (nil)
+	_, exists := data["remote_logname"]
+	is.Equal(exists, false)
 	is.Equal(data["remote_user"], "alice")
 	is.Equal(data["timestamp"], "15/Dec/2023:10:30:45 +0000")
 	is.Equal(data["request"], "POST /api/login HTTP/1.1")
 	is.Equal(data["status"], 200)
 	is.Equal(data["response_size"], 1234)
-	is.Equal(data["referer"], "-")
+	// referer should not be present (nil) since it was "-"
+	_, exists = data["referer"]
+	is.Equal(exists, false)
 	is.Equal(data["user_agent"], "curl/7.68.0")
 }
 
@@ -292,10 +317,16 @@ func Test_parse_combined_log_format_minimal(t *testing.T) {
 
 	data := ParseLineToValues(line)
 
-	is.Equal(len(data), 9)
+	// With nil values, remote_logname and remote_user should not be present since they were "-"
+	// Should have 7 fields: remote_host, timestamp, request, status, response_size, referer, user_agent
+	is.Equal(len(data), 7)
 	is.Equal(data["remote_host"], "example.com")
-	is.Equal(data["remote_logname"], "-")
-	is.Equal(data["remote_user"], "-")
+	// remote_logname should not be present (nil)
+	_, exists := data["remote_logname"]
+	is.Equal(exists, false)
+	// remote_user should not be present (nil)
+	_, exists = data["remote_user"]
+	is.Equal(exists, false)
 	is.Equal(data["timestamp"], "20/Jan/2024:14:20:30 +0200")
 	is.Equal(data["request"], "GET /index.html HTTP/1.1")
 	is.Equal(data["status"], 304)
@@ -362,7 +393,10 @@ func Test_parse_extended_clf_line_with_forwarded_for(t *testing.T) {
 
 	data := ParseLineToValues(line)
 
-	is.Equal(len(data), 10)
+	// With nil values, we should have fewer fields since "-" values are excluded
+	// Should have 7 fields: timestamp, request, status, response_size, user_agent, forwarded_for
+	// Missing: remote_host, remote_logname, remote_user (all were "-")
+	is.Equal(len(data), 7)
 	is.Equal(data["forwarded_for"], "10.10.2.1")
 }
 
@@ -372,8 +406,24 @@ func Test_parse_extended_clf_line_with_dash_forwarded_for(t *testing.T) {
 
 	data := ParseLineToValues(line)
 
-	is.Equal(len(data), 10)
-	is.Equal(data["forwarded_for"], "-")
+	// With nil values, forwarded_for should not be present since it was "-"
+	// Should have 8 fields: remote_host, remote_user, timestamp, request, status, response_size, referer, user_agent
+	// Missing: remote_logname, forwarded_for (both were "-")
+	is.Equal(len(data), 8)
+	is.Equal(data["remote_host"], "192.168.1.100")
+	// remote_logname should not be present (nil)
+	_, exists := data["remote_logname"]
+	is.Equal(exists, false)
+	is.Equal(data["remote_user"], "alice")
+	is.Equal(data["timestamp"], "15/Dec/2023:10:30:45 +0000")
+	is.Equal(data["request"], "POST /api/login HTTP/1.1")
+	is.Equal(data["status"], 200)
+	is.Equal(data["response_size"], 1234)
+	is.Equal(data["referer"], "https://example.com/login")
+	is.Equal(data["user_agent"], "curl/7.68.0")
+	// forwarded_for should not be present (nil)
+	_, exists = data["forwarded_for"]
+	is.Equal(exists, false)
 }
 
 func Test_parse_extended_clf_line_with_ipv6_forwarded_for(t *testing.T) {
@@ -382,7 +432,22 @@ func Test_parse_extended_clf_line_with_ipv6_forwarded_for(t *testing.T) {
 
 	data := ParseLineToValues(line)
 
-	is.Equal(len(data), 10)
+	// With nil values, remote_logname and remote_user should not be present since they were "-"
+	// Should have 8 fields: remote_host, timestamp, request, status, response_size, referer, user_agent, forwarded_for
+	is.Equal(len(data), 8)
+	is.Equal(data["remote_host"], "2001:db8::1")
+	// remote_logname should not be present (nil)
+	_, exists := data["remote_logname"]
+	is.Equal(exists, false)
+	// remote_user should not be present (nil)
+	_, exists = data["remote_user"]
+	is.Equal(exists, false)
+	is.Equal(data["timestamp"], "15/Dec/2023:10:30:45 +0000")
+	is.Equal(data["request"], "GET /api/data HTTP/1.1")
+	is.Equal(data["status"], 200)
+	is.Equal(data["response_size"], 567)
+	is.Equal(data["referer"], "https://example.com/")
+	is.Equal(data["user_agent"], "Mozilla/5.0")
 	is.Equal(data["forwarded_for"], "192.168.1.1")
 }
 
@@ -392,8 +457,13 @@ func Test_parse_extended_clf_line_without_forwarded_for(t *testing.T) {
 
 	data := ParseLineToValues(line)
 
-	// Should still work as combined log format (9 fields, no forwarded_for)
-	is.Equal(len(data), 9)
+	// With nil values, remote_logname should not be present since it was "-"
+	// Should have 8 fields: remote_host, remote_user, timestamp, request, status, response_size, referer, user_agent
+	// (no forwarded_for field since it wasn't present in the original line)
+	is.Equal(len(data), 8)
+	// remote_logname should not be present (nil)
+	_, exists := data["remote_logname"]
+	is.Equal(exists, false)
 }
 
 func Test_debug_regex_matching_without_forwarded_for(t *testing.T) {
@@ -414,7 +484,22 @@ func Test_parse_extended_clf_line_with_empty_forwarded_for(t *testing.T) {
 
 	data := ParseLineToValues(line)
 
-	// Should have 10 fields including empty forwarded_for
-	is.Equal(len(data), 10)
+	// With nil values, remote_logname and remote_user should not be present since they were "-"
+	// Should have 7 fields: remote_host, timestamp, request, status, response_size, user_agent, forwarded_for
+	// Missing: remote_logname, remote_user (both were "-")
+	// forwarded_for is empty string "" so it should be present
+	is.Equal(len(data), 7)
+	is.Equal(data["remote_host"], "10.10.2.2")
+	// remote_logname should not be present (nil)
+	_, exists := data["remote_logname"]
+	is.Equal(exists, false)
+	// remote_user should not be present (nil)
+	_, exists = data["remote_user"]
+	is.Equal(exists, false)
+	is.Equal(data["timestamp"], "20/Sep/2025:23:41:41 +0000")
+	is.Equal(data["request"], "GET / HTTP/1.1")
+	is.Equal(data["status"], 200)
+	is.Equal(data["response_size"], 39689)
+	is.Equal(data["user_agent"], "Mozilla/5.0")
 	is.Equal(data["forwarded_for"], "")
 }

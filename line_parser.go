@@ -212,9 +212,17 @@ func parseCLF(l string) Row {
 	}
 
 	result := make(Row)
-	result["remote_host"] = matches[1]
-	result["remote_logname"] = matches[2]
-	result["remote_user"] = matches[3]
+
+	// Set fields only if they're not "-"
+	if matches[1] != "-" {
+		result["remote_host"] = matches[1]
+	}
+	if matches[2] != "-" {
+		result["remote_logname"] = matches[2]
+	}
+	if matches[3] != "-" {
+		result["remote_user"] = matches[3]
+	}
 	result["timestamp"] = matches[4]
 	result["request"] = matches[5]
 	if status, err := strconv.Atoi(matches[6]); err == nil {
@@ -237,15 +245,15 @@ func parseCLF(l string) Row {
 	quotedFields := parseQuotedFields(remaining)
 
 	// Check if Combined Log Format (has referer and user-agent)
-	if len(quotedFields) > 0 && quotedFields[0] != "" {
+	if len(quotedFields) > 0 && quotedFields[0] != "-" && quotedFields[0] != "" {
 		result["referer"] = quotedFields[0]
 	}
-	if len(quotedFields) > 1 && quotedFields[1] != "" {
+	if len(quotedFields) > 1 && quotedFields[1] != "-" && quotedFields[1] != "" {
 		result["user_agent"] = quotedFields[1]
 	}
 
 	// Check if Extended Log Format (has forwarded_for)
-	if len(quotedFields) > 2 {
+	if len(quotedFields) > 2 && quotedFields[2] != "-" {
 		result["forwarded_for"] = quotedFields[2]
 	}
 
