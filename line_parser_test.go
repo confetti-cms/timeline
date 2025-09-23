@@ -132,23 +132,23 @@ func Test_parse_json_line_with_scientific_float(t *testing.T) {
 
 func Test_parse_syslog_rfc3164_line(t *testing.T) {
 	is := is.New(t)
-	line := `<34>Oct 11 22:14:15 mymachine su: 'su root' failed for lonvick on /dev/pts/8`
+	line := `<34>Oct 11 22:14:15 testhost su: 'su root' failed for testuser2 on /dev/pts/1`
 
 	data := ParseLineToValues(line)
 
 	is.Equal(len(data), 7)
 	is.Equal(data["priority"], 34)
 	is.Equal(data["timestamp"], "Oct 11 22:14:15")
-	is.Equal(data["hostname"], "mymachine")
+	is.Equal(data["hostname"], "testhost")
 	is.Equal(data["tag"], "su")
-	is.Equal(data["message"], "'su root' failed for lonvick on /dev/pts/8")
+	is.Equal(data["message"], "'su root' failed for testuser2 on /dev/pts/1")
 	is.Equal(data["facility"], 4)
 	is.Equal(data["severity"], 2)
 }
 
 func Test_parse_syslog_rfc5424_line(t *testing.T) {
 	is := is.New(t)
-	line := `<165>1 2003-10-11T22:14:15.003Z mymachine.example.com evntslog - ID47 [exampleSDID@32473 iut="3" eventSource="Application"] BOMAn application event log entry...`
+	line := `<165>1 2003-10-11T22:14:15.003Z testhost.example.org evntslog - ID47 [exampleSDID@32473 iut="3" eventSource="Application"] BOMAn application event log entry...`
 
 	data := ParseLineToValues(line)
 
@@ -156,7 +156,7 @@ func Test_parse_syslog_rfc5424_line(t *testing.T) {
 	is.Equal(data["priority"], 165)
 	is.Equal(data["version"], 1)
 	is.Equal(data["timestamp"], "2003-10-11T22:14:15.003Z")
-	is.Equal(data["hostname"], "mymachine.example.com")
+	is.Equal(data["hostname"], "testhost.example.org")
 	is.Equal(data["app_name"], "evntslog")
 	is.Equal(data["procid"], "-")
 	is.Equal(data["msgid"], "ID47")
@@ -177,14 +177,14 @@ func Test_parse_syslog_rfc5424_line(t *testing.T) {
 
 func Test_parse_syslog_rfc3164_minimal_line(t *testing.T) {
 	is := is.New(t)
-	line := `<13>Jun 15 10:30:00 localhost test: hello world`
+	line := `<13>Jun 15 10:30:00 testhost.local test: hello world`
 
 	data := ParseLineToValues(line)
 
 	is.Equal(len(data), 7)
 	is.Equal(data["priority"], 13)
 	is.Equal(data["timestamp"], "Jun 15 10:30:00")
-	is.Equal(data["hostname"], "localhost")
+	is.Equal(data["hostname"], "testhost.local")
 	is.Equal(data["tag"], "test")
 	is.Equal(data["message"], "hello world")
 	is.Equal(data["facility"], 1)
@@ -193,18 +193,18 @@ func Test_parse_syslog_rfc3164_minimal_line(t *testing.T) {
 
 func Test_parse_clf_standard_line(t *testing.T) {
 	is := is.New(t)
-	line := `127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326`
+	line := `192.0.2.1 - testuser [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326`
 
 	data := ParseLineToValues(line)
 
 	// With nil values, remote_logname should not be present since it was "-"
 	// Should have 8 fields: remote_host, remote_user, timestamp, method, path, protocol, status, response_size
 	is.Equal(len(data), 8)
-	is.Equal(data["remote_host"], "127.0.0.1")
+	is.Equal(data["remote_host"], "192.0.2.1")
 	// remote_logname should not be present (nil)
 	_, exists := data["remote_logname"]
 	is.Equal(exists, false)
-	is.Equal(data["remote_user"], "frank")
+	is.Equal(data["remote_user"], "testuser")
 	is.Equal(data["timestamp"], "10/Oct/2000:13:55:36 -0700")
 	is.Equal(data["method"], "GET")          // HTTP method
 	is.Equal(data["path"], "/apache_pb.gif") // Request path
@@ -215,14 +215,14 @@ func Test_parse_clf_standard_line(t *testing.T) {
 
 func Test_parse_clf_line_with_dash_size(t *testing.T) {
 	is := is.New(t)
-	line := `192.168.1.1 - - [15/Dec/2023:10:30:45 +0000] "POST /api/login HTTP/1.1" 401 -`
+	line := `192.0.2.2 - - [15/Dec/2023:10:30:45 +0000] "POST /api/login HTTP/1.1" 401 -`
 
 	data := ParseLineToValues(line)
 
 	// With nil values, remote_logname and remote_user should not be present since they were "-"
 	// Should have 7 fields: remote_host, timestamp, method, path, protocol, status, response_size
 	is.Equal(len(data), 7)
-	is.Equal(data["remote_host"], "192.168.1.1")
+	is.Equal(data["remote_host"], "192.0.2.2")
 	// remote_logname should not be present (nil)
 	_, exists := data["remote_logname"]
 	is.Equal(exists, false)
@@ -234,18 +234,18 @@ func Test_parse_clf_line_with_dash_size(t *testing.T) {
 
 func Test_parse_clf_line_with_hostname(t *testing.T) {
 	is := is.New(t)
-	line := `example.com - alice [20/Jan/2024:14:20:30 +0200] "GET /index.html HTTP/1.1" 304 178`
+	line := `example.org - demo [20/Jan/2024:14:20:30 +0200] "GET /index.html HTTP/1.1" 304 178`
 
 	data := ParseLineToValues(line)
 
 	// With nil values, remote_logname should not be present since it was "-"
 	// Should have 8 fields: remote_host, remote_user, timestamp, method, path, protocol, status, response_size
 	is.Equal(len(data), 8)
-	is.Equal(data["remote_host"], "example.com")
+	is.Equal(data["remote_host"], "example.org")
 	// remote_logname should not be present (nil)
 	_, exists := data["remote_logname"]
 	is.Equal(exists, false)
-	is.Equal(data["remote_user"], "alice")
+	is.Equal(data["remote_user"], "demo")
 	is.Equal(data["timestamp"], "20/Jan/2024:14:20:30 +0200")
 	is.Equal(data["method"], "GET")        // HTTP method
 	is.Equal(data["path"], "/index.html")  // Request path
@@ -256,7 +256,7 @@ func Test_parse_clf_line_with_hostname(t *testing.T) {
 
 func Test_parse_clf_invalid_line(t *testing.T) {
 	is := is.New(t)
-	line := `127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200`
+	line := `192.0.2.1 - testuser [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200`
 
 	data := ParseLineToValues(line)
 
@@ -267,31 +267,31 @@ func Test_parse_clf_invalid_line(t *testing.T) {
 
 func Test_parse_combined_log_format_standard_line(t *testing.T) {
 	is := is.New(t)
-	line := `127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326 "http://www.example.com/start.html" "Mozilla/4.08 [en] (Win98; I ;Nav)"`
+	line := `192.0.2.1 - testuser [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326 "http://www.example.org/start.html" "Mozilla/4.08 [en] (Win98; I ;Nav)"`
 
 	data := ParseLineToValues(line)
 
 	// With nil values, remote_logname should not be present since it was "-"
 	// Should have 10 fields: remote_host, remote_user, timestamp, method, path, protocol, status, response_size, referer, user_agent
 	is.Equal(len(data), 10)
-	is.Equal(data["remote_host"], "127.0.0.1")
+	is.Equal(data["remote_host"], "192.0.2.1")
 	// remote_logname should not be present (nil)
 	_, exists := data["remote_logname"]
 	is.Equal(exists, false)
-	is.Equal(data["remote_user"], "frank")
+	is.Equal(data["remote_user"], "testuser")
 	is.Equal(data["timestamp"], "10/Oct/2000:13:55:36 -0700")
 	is.Equal(data["method"], "GET")          // HTTP method
 	is.Equal(data["path"], "/apache_pb.gif") // Request path
 	is.Equal(data["protocol"], "HTTP/1.0")   // Protocol version
 	is.Equal(data["status"], 200)
 	is.Equal(data["response_size"], 2326)
-	is.Equal(data["referer"], "http://www.example.com/start.html")
+	is.Equal(data["referer"], "http://www.example.org/start.html")
 	is.Equal(data["user_agent"], "Mozilla/4.08 [en] (Win98; I ;Nav)")
 }
 
 func Test_parse_combined_log_format_with_dash_referer(t *testing.T) {
 	is := is.New(t)
-	line := `192.168.1.100 - alice [15/Dec/2023:10:30:45 +0000] "POST /api/login HTTP/1.1" 200 1234 "-" "curl/7.68.0"`
+	line := `192.0.2.200 - demo [15/Dec/2023:10:30:45 +0000] "POST /api/login HTTP/1.1" 200 1234 "-" "curl/7.68.0"`
 
 	data := ParseLineToValues(line)
 
@@ -302,14 +302,14 @@ func Test_parse_combined_log_format_with_dash_referer(t *testing.T) {
 
 func Test_parse_combined_log_format_minimal(t *testing.T) {
 	is := is.New(t)
-	line := `example.com - - [20/Jan/2024:14:20:30 +0200] "GET /index.html HTTP/1.1" 304 178 "https://www.google.com/" "Mozilla/5.0 (compatible; Googlebot/2.1)"`
+	line := `example.org - - [20/Jan/2024:14:20:30 +0200] "GET /index.html HTTP/1.1" 304 178 "https://www.example.org/" "Mozilla/5.0 (compatible; Googlebot/2.1)"`
 
 	data := ParseLineToValues(line)
 
 	// With nil values, remote_logname and remote_user should not be present since they were "-"
 	// Should have 9 fields: remote_host, timestamp, method, path, protocol, status, response_size, referer, user_agent
 	is.Equal(len(data), 9)
-	is.Equal(data["remote_host"], "example.com")
+	is.Equal(data["remote_host"], "example.org")
 	// remote_logname should not be present (nil)
 	_, exists := data["remote_logname"]
 	is.Equal(exists, false)
@@ -322,7 +322,7 @@ func Test_parse_combined_log_format_minimal(t *testing.T) {
 	is.Equal(data["protocol"], "HTTP/1.1") // Protocol version
 	is.Equal(data["status"], 304)
 	is.Equal(data["response_size"], 178)
-	is.Equal(data["referer"], "https://www.google.com/")
+	is.Equal(data["referer"], "https://www.example.org/")
 	is.Equal(data["user_agent"], "Mozilla/5.0 (compatible; Googlebot/2.1)")
 }
 
@@ -387,25 +387,25 @@ func Test_parse_extended_clf_forwarded_for(t *testing.T) {
 	}{
 		{
 			name:        "with forwarded_for IP",
-			line:        `10.10.2.2 - - [20/Sep/2025:23:41:41 +0000] "GET / HTTP/1.1" 200 39689 "-" "Mozilla/5.0" "10.10.2.1"`,
-			expected:    "10.10.2.1",
+			line:        `192.0.2.4 - - [20/Sep/2025:23:41:41 +0000] "GET / HTTP/1.1" 200 39689 "-" "Mozilla/5.0" "192.0.2.6"`,
+			expected:    "192.0.2.6",
 			shouldExist: true,
 		},
 		{
 			name:        "with dash forwarded_for",
-			line:        `192.168.1.100 - alice [15/Dec/2023:10:30:45 +0000] "POST /api/login HTTP/1.1" 200 1234 "https://example.com/login" "curl/7.68.0" "-"`,
+			line:        `192.0.2.200 - demo [15/Dec/2023:10:30:45 +0000] "POST /api/login HTTP/1.1" 200 1234 "https://example.org/login" "curl/7.68.0" "-"`,
 			expected:    nil,
 			shouldExist: false,
 		},
 		{
 			name:        "with IPv6 forwarded_for",
-			line:        `2001:db8::1 - - [15/Dec/2023:10:30:45 +0000] "GET /api/data HTTP/1.1" 200 567 "https://example.com/" "Mozilla/5.0" "192.168.1.1"`,
-			expected:    "192.168.1.1",
+			line:        `2001:db8::1 - - [15/Dec/2023:10:30:45 +0000] "GET /api/data HTTP/1.1" 200 567 "https://example.org/" "Mozilla/5.0" "192.0.2.2"`,
+			expected:    "192.0.2.2",
 			shouldExist: true,
 		},
 		{
 			name:        "with empty forwarded_for",
-			line:        `10.10.2.2 - - [20/Sep/2025:23:41:41 +0000] "GET / HTTP/1.1" 200 39689 "-" "Mozilla/5.0" ""`,
+			line:        `192.0.2.4 - - [20/Sep/2025:23:41:41 +0000] "GET / HTTP/1.1" 200 39689 "-" "Mozilla/5.0" ""`,
 			expected:    "",
 			shouldExist: true,
 		},
@@ -428,13 +428,13 @@ func Test_parse_extended_clf_forwarded_for(t *testing.T) {
 
 func Test_parse_clf_line_without_brackets(t *testing.T) {
 	is := is.New(t)
-	line := `10.10.2.11 -  21/Sep/2025:19:41:57 +0000 "GET /init.php" 200`
+	line := `192.0.2.5 -  21/Sep/2025:19:41:57 +0000 "GET /init.php" 200`
 
 	data := ParseLineToValues(line)
 
 	// Should have 7 fields: remote_host, timestamp, method, path, protocol, status, response_size
 	is.Equal(len(data), 7)
-	is.Equal(data["remote_host"], "10.10.2.11")
+	is.Equal(data["remote_host"], "192.0.2.5")
 	// remote_logname should not be present (nil)
 	_, exists := data["remote_logname"]
 	is.Equal(exists, false)
@@ -537,7 +537,7 @@ func Test_parse_time_message_without_json(t *testing.T) {
 
 func Test_parse_monolog_standard_line(t *testing.T) {
 	is := is.New(t)
-	line := `[2025-09-21 22:35:12] local.DEBUG: User logged in {"id":1,"email":"john@example.com"}`
+	line := `[2025-09-21 22:35:12] local.DEBUG: User logged in {"id":1,"email":"user@example.org"}`
 
 	data := ParseLineToValues(line)
 
@@ -547,7 +547,7 @@ func Test_parse_monolog_standard_line(t *testing.T) {
 	is.Equal(data["level"], "DEBUG")
 	is.Equal(data["message"], "User logged in")
 	is.Equal(data["id"], float64(1)) // JSON numbers are parsed as float64
-	is.Equal(data["email"], "john@example.com")
+	is.Equal(data["email"], "user@example.org")
 }
 
 func Test_parse_monolog_with_complex_json(t *testing.T) {
@@ -735,7 +735,7 @@ func Test_parse_monolog_with_very_simple_json_array(t *testing.T) {
 
 func Test_parse_monolog_basic_format(t *testing.T) {
 	is := is.New(t)
-	line := `[2025-09-21 22:35:12] local.DEBUG: User logged in {"id":1,"email":"john@example.com"}`
+	line := `[2025-09-21 22:35:12] local.DEBUG: User logged in {"id":1,"email":"user@example.org"}`
 
 	data := ParseLineToValues(line)
 
@@ -749,7 +749,7 @@ func Test_parse_monolog_basic_format(t *testing.T) {
 	is.Equal(data["level"], "DEBUG")
 	is.Equal(data["message"], "User logged in")
 	is.Equal(data["id"], float64(1))
-	is.Equal(data["email"], "john@example.com")
+	is.Equal(data["email"], "user@example.org")
 }
 
 func Test_parse_monolog_with_json_array(t *testing.T) {
