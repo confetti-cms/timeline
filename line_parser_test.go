@@ -677,3 +677,137 @@ func Test_parse_monolog_with_special_characters(t *testing.T) {
 	is.Equal(data["message"], "Special chars: äöü ñ 中文")
 	is.Equal(data["unicode"], "测试")
 }
+
+func Test_parse_monolog_with_simple_json_array(t *testing.T) {
+	is := is.New(t)
+	line := `[2025-09-22 11:38:47] local.DEBUG: The message [{"id": "test", "value": 123}]`
+
+	data := ParseLineToValues(line)
+
+	// Debug: print actual data
+	t.Logf("Actual data: %+v", data)
+	t.Logf("Length: %d", len(data))
+
+	is.Equal(len(data), 5)
+	is.Equal(data["timestamp"], "2025-09-22 11:38:47")
+	is.Equal(data["channel"], "local")
+	is.Equal(data["level"], "DEBUG")
+	is.Equal(data["message"], "The message")
+
+	// Check that the JSON array is parsed correctly
+	if resultData, ok := data["result_data"].([]interface{}); ok {
+		is.Equal(len(resultData), 1)
+		if item, ok := resultData[0].(map[string]interface{}); ok {
+			is.Equal(item["id"], "test")
+			is.Equal(item["value"], float64(123))
+		}
+	} else {
+		t.Errorf("Expected result_data to be []interface{}, got %T", data["result_data"])
+	}
+}
+
+func Test_parse_monolog_with_very_simple_json_array(t *testing.T) {
+	is := is.New(t)
+	line := `[2025-09-22 11:38:47] local.DEBUG: The message [1, 2, 3]`
+
+	data := ParseLineToValues(line)
+
+	// Debug: print actual data
+	t.Logf("Actual data: %+v", data)
+	t.Logf("Length: %d", len(data))
+
+	is.Equal(len(data), 5)
+	is.Equal(data["timestamp"], "2025-09-22 11:38:47")
+	is.Equal(data["channel"], "local")
+	is.Equal(data["level"], "DEBUG")
+	is.Equal(data["message"], "The message")
+
+	// Check that the JSON array is parsed correctly
+	if resultData, ok := data["result_data"].([]interface{}); ok {
+		is.Equal(len(resultData), 3)
+		is.Equal(resultData[0], float64(1))
+		is.Equal(resultData[1], float64(2))
+		is.Equal(resultData[2], float64(3))
+	} else {
+		t.Errorf("Expected result_data to be []interface{}, got %T", data["result_data"])
+	}
+}
+
+func Test_parse_monolog_basic_format(t *testing.T) {
+	is := is.New(t)
+	line := `[2025-09-21 22:35:12] local.DEBUG: User logged in {"id":1,"email":"john@example.com"}`
+
+	data := ParseLineToValues(line)
+
+	// Debug: print actual data
+	t.Logf("Actual data: %+v", data)
+	t.Logf("Length: %d", len(data))
+
+	is.Equal(len(data), 6)
+	is.Equal(data["timestamp"], "2025-09-21 22:35:12")
+	is.Equal(data["channel"], "local")
+	is.Equal(data["level"], "DEBUG")
+	is.Equal(data["message"], "User logged in")
+	is.Equal(data["id"], float64(1))
+	is.Equal(data["email"], "john@example.com")
+}
+
+func Test_parse_monolog_with_json_array(t *testing.T) {
+	is := is.New(t)
+	line := `[2025-09-22 11:38:47] local.DEBUG: The message [{"id":"/model","data":{"/model/footer/template-":"/website/includes/footers/footer_small.blade.php"},"join":{"/model/footer":[{"id":"/model/footer","data":{},"join":{"template-":[{"id":"/model/footer/template-","data":{"first_line":"Confetti™","link_1":"https://confetti-cms.com/docs/philosophy","text_link_1":"About","text_link_2":"Privacy Policy","text_link_3":"Licensing"},"join":{}}]},"join_condition":{"template-":""}}]},"join_condition":{"/model/footer":""}}]`
+
+	data := ParseLineToValues(line)
+
+	// Debug: print actual data
+	t.Logf("Actual data: %+v", data)
+	t.Logf("Length: %d", len(data))
+
+	is.Equal(len(data), 5)
+	is.Equal(data["timestamp"], "2025-09-22 11:38:47")
+	is.Equal(data["channel"], "local")
+	is.Equal(data["level"], "DEBUG")
+	is.Equal(data["message"], "The message")
+
+	// Check that the JSON array is parsed correctly
+	if resultData, ok := data["result_data"].([]interface{}); ok {
+		is.Equal(len(resultData), 1)
+		if item, ok := resultData[0].(map[string]interface{}); ok {
+			is.Equal(item["id"], "/model")
+			if data, ok := item["data"].(map[string]interface{}); ok {
+				is.Equal(data["/model/footer/template-"], "/website/includes/footers/footer_small.blade.php")
+			}
+		}
+	} else {
+		t.Errorf("Expected result_data to be []interface{}, got %T", data["result_data"])
+	}
+}
+
+func Test_parse_monolog_with_simplified_json_array(t *testing.T) {
+	is := is.New(t)
+	line := `[2025-09-22 11:38:47] local.DEBUG: The message [{"id": "test", "data": {"path": "/test"}}]`
+
+	data := ParseLineToValues(line)
+
+	// Debug: print actual data
+	t.Logf("Actual data: %+v", data)
+	t.Logf("Length: %d", len(data))
+
+	is.Equal(len(data), 5)
+	is.Equal(data["timestamp"], "2025-09-22 11:38:47")
+	is.Equal(data["channel"], "local")
+	is.Equal(data["level"], "DEBUG")
+	is.Equal(data["message"], "The message")
+
+	// Check that the JSON array is parsed correctly
+	if resultData, ok := data["result_data"].([]interface{}); ok {
+		is.Equal(len(resultData), 1)
+		if item, ok := resultData[0].(map[string]interface{}); ok {
+			is.Equal(item["id"], "test")
+			if data, ok := item["data"].(map[string]interface{}); ok {
+				is.Equal(data["path"], "/test")
+			}
+		}
+	} else {
+		t.Errorf("Expected result_data to be []interface{}, got %T", data["result_data"])
+	}
+}

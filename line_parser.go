@@ -29,15 +29,15 @@ func ParseLineToValues(l string) Row {
 		return result
 	}
 
+	if result := parseMonolog(l); result != nil {
+		return result
+	}
+
 	if result := parseCLF(l); result != nil {
 		return result
 	}
 
 	if result := parseLogfmt(l); result != nil {
-		return result
-	}
-
-	if result := parseMonolog(l); result != nil {
 		return result
 	}
 
@@ -242,6 +242,79 @@ func parseCLF(l string) Row {
 		return nil
 	}
 
+	// Check if the request looks like a valid HTTP request
+	if requestIndex < len(parts) {
+		request := parts[requestIndex]
+		if strings.HasPrefix(request, "\"") && strings.HasSuffix(request, "\"") {
+			request = request[1 : len(request)-1]
+			// Only reject if this looks like pure JSON data (starts with { or [ and has no HTTP method)
+			if (strings.HasPrefix(request, "{") || strings.HasPrefix(request, "[")) && !strings.Contains(request, " ") {
+				// This looks like pure JSON data, not an HTTP request
+				return nil
+			}
+			requestParts := strings.Split(request, " ")
+			if len(requestParts) < 2 {
+				return nil
+			}
+			// Check if first part looks like HTTP method
+			method := requestParts[0]
+			validMethods := []string{"GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH", "TRACE"}
+			isValidMethod := false
+			for _, validMethod := range validMethods {
+				if method == validMethod {
+					isValidMethod = true
+					break
+				}
+			}
+			if !isValidMethod {
+				return nil
+			}
+		} else {
+			// Handle multi-part quoted request
+			// Combine all parts from requestIndex until we find the closing quote
+			fullRequest := request
+			i := requestIndex + 1
+			for i < len(parts) {
+				fullRequest += " " + parts[i]
+				if strings.HasSuffix(parts[i], "\"") {
+					break
+				}
+				i++
+			}
+
+			// Remove surrounding quotes
+			if len(fullRequest) >= 2 && fullRequest[0] == '"' && fullRequest[len(fullRequest)-1] == '"' {
+				request = fullRequest[1 : len(fullRequest)-1]
+			} else {
+				// No closing quote found, this is not a valid CLF line
+				return nil
+			}
+
+			// Validate the request
+			if (strings.HasPrefix(request, "{") || strings.HasPrefix(request, "[")) && !strings.Contains(request, " ") {
+				// This looks like pure JSON data, not an HTTP request
+				return nil
+			}
+			requestParts := strings.Split(request, " ")
+			if len(requestParts) < 2 {
+				return nil
+			}
+			// Check if first part looks like HTTP method
+			method := requestParts[0]
+			validMethods := []string{"GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH", "TRACE"}
+			isValidMethod := false
+			for _, validMethod := range validMethods {
+				if method == validMethod {
+					isValidMethod = true
+					break
+				}
+			}
+			if !isValidMethod {
+				return nil
+			}
+		}
+	}
+
 	// Parse first three fields: remote_host, remote_logname, remote_user
 	// Set fields only if they're not "-"
 	if parts[0] != "-" {
@@ -285,21 +358,11 @@ func parseCLF(l string) Row {
 
 	// Parse request (combine quoted parts if needed)
 	request := parts[requestIndex]
+	actualRequestEndIndex := requestIndex
 	if !strings.HasSuffix(request, "\"") {
 		// Multi-part quoted request - find the closing quote
 		for i := requestIndex + 1; i < len(parts); i++ {
 			request += " " + parts[i]
-			if strings.HasSuffix(parts[i], "\"") {
-				break
-			}
-		}
-	}
-
-	// Calculate the actual end of the request (for status parsing)
-	actualRequestEndIndex := requestIndex
-	if !strings.HasSuffix(parts[requestIndex], "\"") {
-		// Multi-part request - find where it ends
-		for i := requestIndex + 1; i < len(parts); i++ {
 			actualRequestEndIndex = i
 			if strings.HasSuffix(parts[i], "\"") {
 				break
@@ -613,18 +676,54 @@ func parseLogfmt(l string) Row {
 //
 // Fields: timestamp, channel, level, message, and any JSON data fields
 func parseMonolog(l string) Row {
-	// Check if line starts with timestamp in brackets
-	if !strings.HasPrefix(l, "[") {
+	// Check if line contains timestamp in brackets
+	// Handle cases like "[00] [timestamp]" by finding the first timestamp-like bracket
+	startTime := strings.Index(l, "[")
+	if startTime == -1 {
 		return nil
 	}
 
-	// Find the end of timestamp
-	endTime := strings.Index(l, "]")
+	// Find the end of the first bracketed content
+	endTime := strings.Index(l[startTime+1:], "]")
 	if endTime == -1 {
 		return nil
 	}
+	endTime += startTime + 1
 
-	timestamp := l[1:endTime]
+	// Check if this looks like a timestamp (contains numbers and common timestamp separators)
+	timestampCandidate := l[startTime+1 : endTime]
+	// Simple heuristic: if it contains digits and common timestamp chars, it's likely a timestamp
+	hasDigits := false
+	hasTimestampChars := false
+	for _, r := range timestampCandidate {
+		if r >= '0' && r <= '9' {
+			hasDigits = true
+		}
+		if r == '-' || r == ':' || r == ' ' || r == 'T' || r == '+' {
+			hasTimestampChars = true
+		}
+	}
+
+	if !hasDigits || !hasTimestampChars {
+		// This doesn't look like a timestamp, try to find the next bracketed content
+		remaining := l[endTime+1:]
+		nextStart := strings.Index(remaining, "[")
+		if nextStart == -1 {
+			return nil
+		}
+		nextStart += endTime + 1
+		nextEnd := strings.Index(remaining[nextStart-endTime-1:], "]")
+		if nextEnd == -1 {
+			return nil
+		}
+		nextEnd += nextStart
+
+		timestampCandidate = l[nextStart+1 : nextEnd]
+		startTime = nextStart
+		endTime = nextEnd
+	}
+
+	timestamp := timestampCandidate
 	rest := strings.TrimSpace(l[endTime+1:])
 
 	if rest == "" {
@@ -673,37 +772,76 @@ func parseMonolog(l string) Row {
 	result["level"] = parts[1]
 
 	// Check if there's JSON data at the end
-	// Look for the last occurrence of { that could be the start of JSON data
-	braceIndex := strings.LastIndex(messageAndJSON, "{")
-	if braceIndex != -1 && strings.HasSuffix(messageAndJSON, "}") {
-		// Extract potential JSON part
-		jsonPart := messageAndJSON[braceIndex:]
-		messagePart := strings.TrimSpace(messageAndJSON[:braceIndex])
+	// Look for the first occurrence of { or [ that could be the start of JSON data
+	var jsonIndex int
+	var isArray bool
 
-		// Only try to parse as JSON if the message part doesn't end with a colon
-		// This helps avoid false positives where the message contains JSON-like content
-		if !strings.HasSuffix(messagePart, ":") {
-			// Parse JSON data
-			var jsonData map[string]interface{}
-			if err := json.Unmarshal([]byte(jsonPart), &jsonData); err == nil {
-				// Add JSON fields to result
-				for k, v := range jsonData {
-					if num, ok := v.(json.Number); ok {
-						if i, err := num.Int64(); err == nil {
-							result[k] = int(i)
-						} else if f, err := num.Float64(); err == nil {
-							result[k] = f
-						} else {
-							result[k] = num.String()
+	// Check for JSON array first (leftmost)
+	bracketIndex := strings.Index(messageAndJSON, "[")
+	// Check for JSON object
+	braceIndex := strings.Index(messageAndJSON, "{")
+
+	// Use the leftmost valid JSON start
+	if bracketIndex != -1 && (braceIndex == -1 || bracketIndex < braceIndex) {
+		jsonIndex = bracketIndex
+		isArray = true
+	} else if braceIndex != -1 {
+		jsonIndex = braceIndex
+		isArray = false
+	} else {
+		jsonIndex = -1
+	}
+
+	if jsonIndex != -1 {
+		var endChar string
+		if isArray {
+			endChar = "]"
+		} else {
+			endChar = "}"
+		}
+
+		if strings.HasSuffix(messageAndJSON, endChar) {
+			// Extract potential JSON part
+			jsonPart := messageAndJSON[jsonIndex:]
+			messagePart := strings.TrimSpace(messageAndJSON[:jsonIndex])
+
+			// Only try to parse as JSON if the message part doesn't end with a colon
+			// This helps avoid false positives where the message contains JSON-like content
+			if !strings.HasSuffix(messagePart, ":") {
+				// Try to parse JSON data
+				if isArray {
+					// Parse as JSON array
+					var jsonData []interface{}
+					if err := json.Unmarshal([]byte(jsonPart), &jsonData); err == nil {
+						// For arrays, store the entire array under a single key
+						result["result_data"] = jsonData
+						result["message"] = messagePart
+						return result
+					}
+				} else {
+					// Parse as JSON object (existing logic)
+					var jsonData map[string]interface{}
+					if err := json.Unmarshal([]byte(jsonPart), &jsonData); err == nil {
+						// Add JSON fields to result
+						for k, v := range jsonData {
+							if num, ok := v.(json.Number); ok {
+								if i, err := num.Int64(); err == nil {
+									result[k] = int(i)
+								} else if f, err := num.Float64(); err == nil {
+									result[k] = f
+								} else {
+									result[k] = num.String()
+								}
+							} else {
+								result[k] = v
+							}
 						}
-					} else {
-						result[k] = v
+
+						result["message"] = messagePart
+						return result
 					}
 				}
 
-				result["message"] = messagePart
-				return result
-			} else {
 				// JSON parsing failed, return nil to let other parsers handle it
 				return nil
 			}
