@@ -114,7 +114,6 @@ func (w *Writer) Write(table string, row Row) error {
 
 	row = w.preprocessRow(row, cols)
 
-	rowJson, _ := json.Marshal(row)
 	// get duckdb path for logging
 	var seq int
 	var name string
@@ -122,11 +121,6 @@ func (w *Writer) Write(table string, row Row) error {
 	if err := w.DB.QueryRow("PRAGMA database_list").Scan(&seq, &name, &filePath); err != nil {
 		return fmt.Errorf("failed to get database path: %w", err)
 	}
-	dbPath := filePath.String
-	if !filePath.Valid {
-		dbPath = ":memory:"
-	}
-	fmt.Printf("Inserting into %s.%s: %s\n", dbPath, table, string(rowJson))
 
 	if err := w.insertRow(table, row); err != nil {
 		return fmt.Errorf("failed to insert row: %w", err)

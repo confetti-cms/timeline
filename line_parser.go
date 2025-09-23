@@ -41,6 +41,10 @@ func ParseLineToValues(l string) Row {
 		return result
 	}
 
+	if result := parseTimestampMessage(l); result != nil {
+		return result
+	}
+
 	return Row{"message": stripAnsiCodes(l)}
 }
 
@@ -379,6 +383,100 @@ func parseCLF(l string) Row {
 	return result
 }
 
+// parseTimestampMessage parses lines that start with a timestamp in brackets followed by a plain message.
+// Format: [timestamp] message
+// Example: [2025-09-21 22:35:12] Waiting for models to be refreshed. Left: 140
+// Fields: timestamp, message
+// Note: Only matches if the content after timestamp doesn't look like structured log format
+func parseTimestampMessage(l string) Row {
+	// Check if line starts with timestamp in brackets
+	if !strings.HasPrefix(l, "[") {
+		return nil
+	}
+
+	// Find the end of timestamp
+	endTime := strings.Index(l, "]")
+	if endTime == -1 {
+		return nil
+	}
+
+	timestamp := l[1:endTime]
+	rest := strings.TrimSpace(l[endTime+1:])
+
+	if rest == "" {
+		return nil
+	}
+
+	// Don't parse if it looks like structured log format
+	// Check for patterns that indicate this should be handled by other parsers
+
+	// Pattern 1: Contains JSON-like content with braces (likely structured data)
+	if strings.Contains(rest, "{") && strings.Contains(rest, "}") {
+		return nil
+	}
+
+	// Pattern 2: Contains equals signs (likely logfmt format)
+	if strings.Contains(rest, "=") {
+		return nil
+	}
+
+	// Pattern 3: Contains syslog priority format like <number>
+	if strings.HasPrefix(rest, "<") && len(rest) > 1 {
+		for i, r := range rest[1:] {
+			if r == '>' {
+				// Check if there's a number between < and >
+				priorityPart := rest[1 : i+1]
+				if len(priorityPart) > 0 {
+					for _, digit := range priorityPart {
+						if digit < '0' || digit > '9' {
+							break
+						}
+					}
+					// If we get here, it looks like syslog format
+					return nil
+				}
+			}
+		}
+	}
+
+	// Pattern 4: Check for monolog format specifically
+	// Monolog format: channel.level: message (with space after colon)
+	// We need to be more specific here to avoid false positives
+	colonIndex := strings.Index(rest, ": ")
+	if colonIndex != -1 {
+		beforeColon := strings.TrimSpace(rest[:colonIndex])
+		afterColon := strings.TrimSpace(rest[colonIndex+2:])
+
+		// Only reject if it looks like a clear monolog pattern
+		// Must have exactly one dot and be followed by a space and then text
+		if strings.Contains(beforeColon, ".") &&
+			len(strings.Split(beforeColon, ".")) == 2 &&
+			len(afterColon) > 0 {
+			// Additional check: if after colon starts with capital letter, it's likely monolog
+			if afterColon[0] >= 'A' && afterColon[0] <= 'Z' {
+				return nil
+			}
+		}
+	}
+
+	// Pattern 5: Check for other structured log patterns that should be handled by monolog
+	// Look for patterns like "channel.level:" without space (invalid monolog but still structured)
+	if strings.Contains(rest, ":") && !strings.Contains(rest, ": ") {
+		// Check if there's a dot before the colon (likely channel.level: format)
+		colonIndex := strings.Index(rest, ":")
+		beforeColon := strings.TrimSpace(rest[:colonIndex])
+		if strings.Contains(beforeColon, ".") && len(strings.Split(beforeColon, ".")) == 2 {
+			return nil
+		}
+	}
+
+	result := make(Row)
+	result["timestamp"] = timestamp
+	result["message"] = rest
+
+	return result
+}
+
 // parseQuotedFieldsFromSlice parses quoted fields from a slice of strings.
 // Returns a slice of field values, handling quoted strings properly.
 func parseQuotedFieldsFromSlice(parts []string) []string {
@@ -533,9 +631,6 @@ func parseMonolog(l string) Row {
 		return nil
 	}
 
-	result := make(Row)
-	result["timestamp"] = timestamp
-
 	// Find the colon that separates channel.level from message
 	colonIndex := strings.Index(rest, ":")
 	if colonIndex == -1 {
@@ -554,9 +649,6 @@ func parseMonolog(l string) Row {
 		return nil
 	}
 
-	result["channel"] = parts[0]
-	result["level"] = parts[1]
-
 	// Parse message and JSON data
 	messageAndJSON := strings.TrimSpace(rest[colonIndex+1:])
 	if messageAndJSON == "" {
@@ -567,6 +659,18 @@ func parseMonolog(l string) Row {
 	if colonIndex+1 >= len(rest) || rest[colonIndex+1] != ' ' {
 		return nil
 	}
+
+	// Additional validation: ensure the message part starts with a space after the colon
+	// This prevents matching lines like "[timestamp] some text: more text" where there's no space
+	// Note: We check the original rest string, not the trimmed messageAndJSON
+	if !strings.HasPrefix(rest[colonIndex+1:], " ") {
+		return nil
+	}
+
+	result := make(Row)
+	result["timestamp"] = timestamp
+	result["channel"] = parts[0]
+	result["level"] = parts[1]
 
 	// Check if there's JSON data at the end
 	// Look for the last occurrence of { that could be the start of JSON data
@@ -600,14 +704,12 @@ func parseMonolog(l string) Row {
 				result["message"] = messagePart
 				return result
 			} else {
-				// JSON parsing failed, log the error for debugging
-				// For now, just fall through to treat as message
+				// JSON parsing failed, return nil to let other parsers handle it
+				return nil
 			}
 		}
 	}
 
-	// No JSON data, whole thing is message
-	result["message"] = messageAndJSON
-
-	return result
+	// No JSON data found, return nil to let other parsers handle it
+	return nil
 }

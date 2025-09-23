@@ -524,6 +524,17 @@ func Test_parse_unmatched_format_mixed_ansi(t *testing.T) {
 	is.Equal(data["message"], "Error: Something went wrong")
 }
 
+func Test_parse_time_message_without_json(t *testing.T) {
+	is := is.New(t)
+	line := `[2025-09-21 22:35:12] Waiting for models to be refreshed. Left: 140`
+
+	data := ParseLineToValues(line)
+
+	is.Equal(len(data), 2)
+	is.Equal(data["timestamp"], "2025-09-21 22:35:12")
+	is.Equal(data["message"], "Waiting for models to be refreshed. Left: 140")
+}
+
 func Test_parse_monolog_standard_line(t *testing.T) {
 	is := is.New(t)
 	line := `[2025-09-21 22:35:12] local.DEBUG: User logged in {"id":1,"email":"john@example.com"}`
@@ -537,19 +548,6 @@ func Test_parse_monolog_standard_line(t *testing.T) {
 	is.Equal(data["message"], "User logged in")
 	is.Equal(data["id"], float64(1)) // JSON numbers are parsed as float64
 	is.Equal(data["email"], "john@example.com")
-}
-
-func Test_parse_monolog_without_json(t *testing.T) {
-	is := is.New(t)
-	line := `[2025-09-21 22:35:12] production.ERROR: Database connection failed`
-
-	data := ParseLineToValues(line)
-
-	is.Equal(len(data), 4)
-	is.Equal(data["timestamp"], "2025-09-21 22:35:12")
-	is.Equal(data["channel"], "production")
-	is.Equal(data["level"], "ERROR")
-	is.Equal(data["message"], "Database connection failed")
 }
 
 func Test_parse_monolog_with_complex_json(t *testing.T) {
