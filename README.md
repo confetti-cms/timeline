@@ -33,38 +33,19 @@ go get github.com/confetti-cms/timeline
 ### Quick Start
 
 ```go
-package main
+// Get or create a timeline connection using the global connection manager
+// (Directory creation is handled automatically in the timeline manager)
+writer, err := timeline.GetTimelineConnectionManager().GetOrCreateConnection(dbPath)
+if err != nil {
+    return fmt.Errorf("failed to get timeline connection: %w", err)
+}
 
-import (
-    "fmt"
-    "time"
-    "github.com/confetti-cms/timeline"
-)
+// parse entry.message to object
+row := timeline.ParseLineToValues(entry.Message)
 
-func main() {
-    // Create an in-memory timeline client
-    writer, err := timeline.NewMemoryClient()
-    if err != nil {
-        panic(err)
-    }
-    defer writer.Close()
-
-    // Write some data
-    row := timeline.NewRow(time.Now(), map[string]any{
-        "user_id": 123,
-        "event": "login",
-        "metadata": map[string]any{
-            "ip": "192.168.1.1",
-            "user_agent": "Mozilla/5.0",
-        },
-    })
-
-    err = writer.Write("user_events", row)
-    if err != nil {
-        panic(err)
-    }
-
-    fmt.Println("Data written successfully!")
+err = writer.Write(tableName, timeline.NewRow(entry.Timestamp, row))
+if err != nil {
+    return fmt.Errorf("failed to write log entry to duckdb: %w", err)
 }
 ```
 
@@ -284,4 +265,4 @@ For questions and support, please open an issue on GitHub.
 
 ---
 
-**Built with ❤️ for high-performance timeline data processing**
+tests are with build with ❤️
