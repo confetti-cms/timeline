@@ -265,4 +265,4 @@ For questions and support, please open an issue on GitHub.
 
 ---
 
-tests are with build with ❤️
+Tests are with build with ❤️
