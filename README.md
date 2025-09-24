@@ -1,4 +1,4 @@
-# Timeline Database Client
+# From Log to Timeline Database Client
 
 A powerful Go library for timeline database operations using DuckDB, featuring automatic schema evolution and intelligent type promotion.
 
@@ -35,13 +35,13 @@ go get github.com/confetti-cms/timeline
 ```go
 // Get or create a timeline connection using the global connection manager
 // (Directory creation is handled automatically in the timeline manager)
-writer, err := timeline.GetTimelineConnectionManager().GetOrCreateConnection(dbPath)
+writer, err := timeline.GetTimelineConnectionManager().GetOrCreateConnection("./data/timeline.db")
 if err != nil {
     return fmt.Errorf("failed to get timeline connection: %w", err)
 }
 
 // parse entry.message to object
-row := timeline.ParseLineToValues(entry.Message)
+row := timeline.ParseLineToValues("user logged in at 2023-12-25 14:30:00")
 
 err = writer.Write(tableName, timeline.NewRow(entry.Timestamp, row))
 if err != nil {
@@ -265,4 +265,4 @@ For questions and support, please open an issue on GitHub.
 
 ---
 
-Tests are with build with ❤️
+Tests are built with ❤️
